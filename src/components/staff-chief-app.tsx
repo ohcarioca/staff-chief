@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  Archive, ArrowUpRight, BrainCircuit, CircleDot, DatabaseBackup, FileText, LayoutDashboard,
-  Link2, Map as MapIcon, Network, Plus, Search, Sparkles, Upload, X,
+  Archive, ArrowUpRight, BrainCircuit, CalendarDays, CircleDot, DatabaseBackup, FileText, LayoutDashboard,
+  Link2, Map as MapIcon, Network, PanelLeftClose, PanelLeftOpen, Plus, Search, Sparkles, Upload, X,
 } from "lucide-react";
-import type { AppState, FindingRecord, KnowledgeObjectRecord, NoteRecord, ViewName } from "@/lib/contracts";
+import type { AnalysisType, AppState, FindingRecord, KnowledgeObjectRecord, NoteRecord, ViewName } from "@/lib/contracts";
 import { AnalysisDialog } from "./analysis-dialog";
+import { AnalysisLauncherDialog } from "./analysis-launcher-dialog";
 
 const KnowledgeMap = dynamic(() => import("./knowledge-map").then((module) => module.KnowledgeMap), {
   loading: () => <div className="loading-row">Carregando mapa…</div>,
@@ -21,8 +22,23 @@ const viewTitles: Record<ViewName, { title: string; subtitle: string }> = {
   dashboard: { title: "Visão geral", subtitle: "O que merece sua atenção agora" },
   map: { title: "Mapa", subtitle: "Relações explícitas e sinais emergentes" },
   notes: { title: "Notas", subtitle: "Sua memória gerencial, conectada" },
+  objects: { title: "Objetos", subtitle: "Conhecimento organizado por tipo" },
 };
 const categoryLabels: Record<string, string> = { connection: "Conexão", risk: "Risco", contradiction: "Contradição", gap: "Lacuna", follow_up: "Follow-up" };
+
+type DateRange = { start: string; end: string };
+
+function dateInputValue(date: Date) {
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10);
+}
+
+function isWithinRange(value: string, range: DateRange) {
+  const timestamp = new Date(value).getTime();
+  const start = range.start ? new Date(`${range.start}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+  const end = range.end ? new Date(`${range.end}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY;
+  return timestamp >= start && timestamp <= end;
+}
 
 function relativeDate(value: string) {
   const date = new Date(value);
@@ -39,26 +55,39 @@ async function readJson(response: Response) {
   return data;
 }
 
-function Dashboard({ state, onOpenRun, onNewNote, onGoToNotes }: { state: AppState; onOpenRun(id: string): void; onNewNote(): void; onGoToNotes(): void }) {
+function Dashboard({ state, dateRange, onOpenRun, onNewNote, onGoToNotes, onComposerSaved, onComposerDirty, onSelectObject }: { state: AppState; dateRange: DateRange; onOpenRun(id: string): void; onNewNote(): void; onGoToNotes(): void; onComposerSaved(note: NoteRecord): void; onComposerDirty(dirty: boolean): void; onSelectObject(objectId: string): void }) {
+  const [composerVersion, setComposerVersion] = useState(0);
+  const filteredNotes = state.notes.filter((note) => isWithinRange(note.updatedAt, dateRange));
+  const filteredRuns = state.recentRuns.filter((run) => isWithinRange(run.createdAt, dateRange));
+  const filteredFindings = state.priorityFindings.filter((finding) => isWithinRange(finding.createdAt, dateRange));
+  const linkedObjectIds = new Set(filteredNotes.flatMap((note) => note.mentions.map((object) => object.id)));
+  const isAllTime = !dateRange.start && !dateRange.end;
+  const noteCount = isAllTime ? state.metrics.notes : filteredNotes.length;
+  const objectCount = isAllTime ? state.metrics.objects : linkedObjectIds.size;
+  const unlinkedNotes = isAllTime ? state.metrics.unlinkedNotes : filteredNotes.filter((note) => note.mentions.length === 0).length;
   const metrics = [
-    { label: "Notas ativas", value: state.metrics.notes, icon: FileText, tone: "green" },
-    { label: "Objetos", value: state.metrics.objects, icon: CircleDot, tone: "violet" },
-    { label: "Achados abertos", value: state.metrics.openFindings, icon: Sparkles, tone: "gold" },
-    { label: "Follow-ups", value: state.metrics.pendingFollowUps, icon: ArrowUpRight, tone: "coral" },
-    { label: "Sem vínculos", value: state.metrics.unlinkedNotes, icon: Link2, tone: "stone" },
+    { label: "Notas ativas", value: noteCount, icon: FileText, tone: "green" },
+    { label: "Objetos", value: objectCount, icon: CircleDot, tone: "violet" },
+    { label: "Achados abertos", value: isAllTime ? state.metrics.openFindings : filteredFindings.length, icon: Sparkles, tone: "gold" },
+    { label: "Follow-ups", value: isAllTime ? state.metrics.pendingFollowUps : filteredFindings.filter((finding) => finding.category === "follow_up").length, icon: ArrowUpRight, tone: "coral" },
+    { label: "Sem vínculos", value: unlinkedNotes, icon: Link2, tone: "stone" },
   ];
+  const health = noteCount ? Math.round(((noteCount - unlinkedNotes) / noteCount) * 100) : 0;
   return <div className="dashboard-view">
     <div className="metric-grid">{metrics.map(({ label, value, icon: Icon, tone }) => <article className={`metric-card tone-${tone}`} key={label}><div className="metric-icon"><Icon size={18} /></div><div><strong>{value}</strong><span>{label}</span></div></article>)}</div>
-    <section className="dashboard-section">
+    <section className="dashboard-section knowledge-health">
+      <div className="section-heading"><div><span className="eyebrow">Saúde da base</span><h2>Conhecimento conectado</h2></div><span className="health-score">{health}%</span></div>
+      <div className="health-bar"><span style={{ width: `${health}%` }} /></div>
+      <p>{unlinkedNotes ? `${unlinkedNotes} nota(s) ainda não mencionam pessoas, projetos ou ideias.` : noteCount ? "Todas as notas ativas possuem ao menos uma conexão." : "O indicador cresce quando suas notas começam a se conectar."}</p>
+    </section>
+    <section className="dashboard-section activity-section">
       <div className="section-heading"><div><span className="eyebrow">Atividade</span><h2>Análises recentes</h2></div></div>
-      {state.recentRuns.length ? <div className="run-table">{state.recentRuns.map((run) => <button key={run.id} onClick={() => onOpenRun(run.id)}><span className={`run-dot run-dot-${run.status}`} /><span><strong>{run.scopeType === "note" ? "Análise de nota" : "Análise de objeto"}</strong><small>{relativeDate(run.createdAt)} · Codex</small></span><span className="run-status">{run.status === "completed" ? "Concluída" : run.status === "partial" ? "Parcial" : run.status === "running" ? "Em curso" : run.status}</span><ArrowUpRight size={15} /></button>)}</div>
+      {filteredRuns.length ? <div className="run-table">{filteredRuns.map((run) => <button key={run.id} onClick={() => onOpenRun(run.id)}><span className={`run-dot run-dot-${run.status}`} /><span><strong>{run.scopeType === "note" ? "Análise de nota" : "Análise de objeto"}</strong><small>{relativeDate(run.createdAt)} · Codex</small></span><span className="run-status">{run.status === "completed" ? "Concluída" : run.status === "partial" ? "Parcial" : run.status === "running" ? "Em curso" : run.status}</span><ArrowUpRight size={15} /></button>)}</div>
         : <div className="soft-empty"><div className="soft-empty-mark"><BrainCircuit size={23} /></div><div><strong>Ainda não há análises</strong><p>Crie uma nota conectada e peça ao Codex para olhar além do óbvio.</p></div><button className="secondary-button" onClick={state.notes.length ? onGoToNotes : onNewNote}>{state.notes.length ? "Ver notas" : "Criar primeira nota"}</button></div>}
     </section>
-    <section className="dashboard-section knowledge-health">
-      <div className="section-heading"><div><span className="eyebrow">Saúde da base</span><h2>Conhecimento conectado</h2></div><span className="health-score">{state.metrics.notes ? Math.round(((state.metrics.notes - state.metrics.unlinkedNotes) / state.metrics.notes) * 100) : 0}%</span></div>
-      <div className="health-bar"><span style={{ width: `${state.metrics.notes ? ((state.metrics.notes - state.metrics.unlinkedNotes) / state.metrics.notes) * 100 : 0}%` }} /></div>
-      <p>{state.metrics.unlinkedNotes ? `${state.metrics.unlinkedNotes} nota(s) ainda não mencionam pessoas, projetos ou ideias.` : state.metrics.notes ? "Todas as notas ativas possuem ao menos uma conexão." : "O indicador cresce quando suas notas começam a se conectar."}</p>
-    </section>
+    <div className="dashboard-composer">
+      <RichNoteEditor key={`dashboard-composer-${composerVersion}`} note={null} isNew objectTypes={state.objectTypes} objects={state.objects} compact onDirtyChange={onComposerDirty} onSaved={(note) => { onComposerDirty(false); onComposerSaved(note); setComposerVersion((version) => version + 1); }} onAnalyze={() => undefined} onArchive={() => undefined} onSelectObject={onSelectObject} />
+    </div>
   </div>;
 }
 
@@ -70,10 +99,51 @@ function NotesList({ notes, selectedId, onSelect, onNew }: { notes: NoteRecord[]
   </div>;
 }
 
-function FindingSummary({ findings, onOpenRun }: { findings: FindingRecord[]; onOpenRun(id: string): void }) {
-  return <div className="inspector-stack"><header className="inspector-title"><span className="eyebrow">Prioridades</span><h2>Achados abertos</h2><p>Sinais encontrados somente nas análises que você iniciou.</p></header>
-    <div className="compact-findings">{findings.length ? findings.map((finding) => <button key={finding.id} onClick={() => onOpenRun(finding.runId)} className={`compact-finding priority-${finding.priority}`}><span>{categoryLabels[finding.category]}</span><strong>{finding.title}</strong><small>{finding.priority === "high" ? "Prioridade alta" : finding.priority === "medium" ? "Prioridade média" : "Prioridade baixa"} · {finding.confidence}%</small></button>) : <div className="empty-inspector compact"><div className="empty-orbit">✓</div><h3>Nada pendente</h3><p>Achados abertos aparecerão aqui.</p></div>}</div>
+function ObjectsList({ typeName, objects, notes, selectedId, onSelect }: { typeName: string; objects: KnowledgeObjectRecord[]; notes: NoteRecord[]; selectedId: string | null; onSelect(id: string): void }) {
+  return <div className="objects-view">
+    <div className="view-toolbar"><div><span className="eyebrow">Tipo de objeto</span><strong>{typeName}</strong></div><span className="object-total">{objects.length} objeto{objects.length === 1 ? "" : "s"}</span></div>
+    {objects.length ? <div className="object-list">{objects.map((object) => {
+      const linkedNotes = notes.filter((note) => note.mentions.some((mention) => mention.id === object.id)).length;
+      return <button key={object.id} className={selectedId === object.id ? "object-row is-selected" : "object-row"} onClick={() => onSelect(object.id)} style={{ "--object-color": object.typeColor } as React.CSSProperties}>
+        <span className="object-row-icon">{object.typeIcon}</span><span className="object-row-copy"><strong>{object.name}</strong><small>{object.description || "Sem descrição"}</small></span><span className="object-row-notes"><FileText size={13} />{linkedNotes}</span><ArrowUpRight size={15} />
+      </button>;
+    })}</div> : <div className="center-empty"><div className="empty-orbit">{typeName.slice(0, 1)}</div><h2>Nenhum objeto deste tipo</h2><p>Crie o primeiro usando uma menção @ em uma nota.</p></div>}
   </div>;
+}
+
+function DateFilter({ value, onChange }: { value: DateRange; onChange(value: DateRange): void }) {
+  const applyDays = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days + 1);
+    onChange({ start: dateInputValue(start), end: dateInputValue(end) });
+  };
+  const today = dateInputValue(new Date());
+  const presetStart = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() - days + 1);
+    return dateInputValue(date);
+  };
+  const activePreset = !value.start && !value.end ? "all"
+    : value.end === today && value.start === today ? "today"
+      : value.end === today && value.start === presetStart(7) ? "7"
+        : value.end === today && value.start === presetStart(30) ? "30" : "custom";
+  return <section className="date-filter" aria-label="Filtrar dashboard por data">
+    <header><div className="date-filter-icon"><CalendarDays size={17} /></div><div><span className="eyebrow">Calendário</span><h2>Filtrar por data</h2></div></header>
+    <div className="date-presets">
+      <button className={activePreset === "all" ? "is-active" : ""} onClick={() => onChange({ start: "", end: "" })}>Todos</button>
+      <button className={activePreset === "today" ? "is-active" : ""} onClick={() => applyDays(1)}>Hoje</button>
+      <button className={activePreset === "7" ? "is-active" : ""} onClick={() => applyDays(7)}>7 dias</button>
+      <button className={activePreset === "30" ? "is-active" : ""} onClick={() => applyDays(30)}>30 dias</button>
+    </div>
+    <div className="date-fields"><label><span>De</span><input type="date" value={value.start} max={value.end || undefined} onChange={(event) => onChange({ ...value, start: event.target.value })} /></label><label><span>Até</span><input type="date" value={value.end} min={value.start || undefined} onChange={(event) => onChange({ ...value, end: event.target.value })} /></label></div>
+  </section>;
+}
+
+function FindingSummary({ findings, onOpenRun, onAnalyze }: { findings: FindingRecord[]; onOpenRun(id: string): void; onAnalyze(): void }) {
+  return <section className="finding-summary"><header className="inspector-title"><span className="eyebrow">Prioridades</span><div className="inspector-title-row"><h2>Achados abertos</h2><button className="ai-analysis-button" onClick={onAnalyze}><Sparkles size={14} /> Análise IA</button></div><p>Sinais encontrados somente nas análises que você iniciou.</p></header>
+    <div className="compact-findings">{findings.length ? findings.map((finding) => <button key={finding.id} onClick={() => onOpenRun(finding.runId)} className={`compact-finding priority-${finding.priority}`}><span>{categoryLabels[finding.category]}</span><strong>{finding.title}</strong><small>{finding.priority === "high" ? "Prioridade alta" : finding.priority === "medium" ? "Prioridade média" : "Prioridade baixa"} · {finding.confidence}%</small></button>) : <div className="empty-inspector compact"><div className="empty-orbit">✓</div><h3>Nada pendente</h3><p>Achados abertos aparecerão aqui.</p></div>}</div>
+  </section>;
 }
 
 function ObjectInspector({ object, state, onAnalyze, onArchive, onChanged }: { object: KnowledgeObjectRecord | null; state: AppState; onAnalyze(id: string): void; onArchive(id: string): void; onChanged(): void }) {
@@ -82,7 +152,7 @@ function ObjectInspector({ object, state, onAnalyze, onArchive, onChanged }: { o
   const [name, setName] = useState(object?.name ?? "");
   const [description, setDescription] = useState(object?.description ?? "");
   const [error, setError] = useState("");
-  if (!object) return <div className="empty-inspector"><div className="empty-orbit">◎</div><h3>Explore uma conexão</h3><p>Selecione um objeto no mapa para ver suas notas e relações.</p></div>;
+  if (!object) return <div className="empty-inspector"><div className="empty-orbit">◎</div><h3>Explore um objeto</h3><p>Selecione um objeto para ver suas notas e relações.</p></div>;
   const linkedNotes = state.notes.filter((note) => note.mentions.some((mention) => mention.id === object.id));
   const relations = state.relationships.filter((relation) => relation.sourceObjectId === object.id || relation.targetObjectId === object.id);
   const addRelation = async () => {
@@ -116,16 +186,26 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const [search, setSearch] = useState("");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(initialState.notes[0]?.id ?? null);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(initialState.objectTypes[0]?.id ?? null);
   const [isNewNote, setIsNewNote] = useState(false);
   const [editorDirty, setEditorDirty] = useState(false);
+  const [composerDirty, setComposerDirty] = useState(false);
   const [typeFormOpen, setTypeFormOpen] = useState(false);
   const [typeName, setTypeName] = useState("");
   const [typeIcon, setTypeIcon] = useState("○");
   const [typeColor, setTypeColor] = useState("#4F7D70");
   const [notice, setNotice] = useState("");
   const [analysisScope, setAnalysisScope] = useState<{ type: "note" | "object"; id: string } | null>(null);
+  const [analysisTypes, setAnalysisTypes] = useState<AnalysisType[] | undefined>(undefined);
+  const [analysisLauncherOpen, setAnalysisLauncherOpen] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState<number | null>(null);
+  const [resizingInspector, setResizingInspector] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>({ start: "", end: "" });
   const restoreInput = useRef<HTMLInputElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const inspectorRef = useRef<HTMLElement>(null);
 
   const refresh = useCallback(async (query = search) => {
     const result = await readJson(await fetch(`/api/state?q=${encodeURIComponent(query)}`, { cache: "no-store" }));
@@ -133,20 +213,48 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   }, [search]);
 
   useEffect(() => {
+    if (view === "objects") return;
     const timer = setTimeout(() => { void refresh(search); }, 220);
     return () => clearTimeout(timer);
-  }, [search, refresh]);
+  }, [search, refresh, view]);
+
+  useEffect(() => {
+    if (!resizingInspector) return;
+    const resize = (event: PointerEvent) => {
+      const sidebarWidth = sidebarRef.current?.getBoundingClientRect().width ?? (sidebarCollapsed ? 72 : 275);
+      const maximum = Math.max(300, Math.min(960, window.innerWidth - sidebarWidth - 430));
+      setInspectorWidth(Math.min(maximum, Math.max(300, window.innerWidth - event.clientX)));
+    };
+    const finish = () => setResizingInspector(false);
+    document.body.classList.add("is-resizing-panel");
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+    return () => {
+      document.body.classList.remove("is-resizing-panel");
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [resizingInspector, sidebarCollapsed]);
 
   const selectedNote = state.notes.find((note) => note.id === selectedNoteId) ?? null;
   const selectedObject = state.objects.find((object) => object.id === selectedObjectId) ?? null;
+  const selectedType = state.objectTypes.find((type) => type.id === selectedTypeId) ?? null;
+  const currentViewTitle = view === "objects" && selectedType ? { title: selectedType.name, subtitle: "Objetos" } : viewTitles[view];
 
-  const guardUnsaved = () => !editorDirty || window.confirm("Há alterações não salvas. Descartar e continuar?");
+  const guardUnsaved = () => {
+    const dirty = view === "notes" ? editorDirty : view === "dashboard" ? composerDirty : false;
+    return !dirty || window.confirm("Há alterações não salvas. Descartar e continuar?");
+  };
   const changeView = (next: ViewName) => {
-    if (view === "notes" && next !== "notes" && !guardUnsaved()) return;
+    if (next !== view && !guardUnsaved()) return;
+    if (view === "dashboard" && next !== "dashboard") setComposerDirty(false);
     setView(next); if (next !== "notes") setIsNewNote(false);
   };
   const newNote = () => {
-    if (view === "notes" && !guardUnsaved()) return;
+    if (!guardUnsaved()) return;
+    if (view === "dashboard") setComposerDirty(false);
     setView("notes"); setSelectedNoteId(null); setIsNewNote(true); setEditorDirty(true);
   };
   const selectNote = (noteId: string) => {
@@ -154,14 +262,25 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     setSelectedNoteId(noteId); setIsNewNote(false); setEditorDirty(false);
   };
   const selectObject = (objectId: string) => {
-    if (view === "notes" && !guardUnsaved()) return;
+    if (!guardUnsaved()) return;
+    if (view === "dashboard") setComposerDirty(false);
     setSelectedObjectId(objectId); setView("map"); setIsNewNote(false); setEditorDirty(false);
+  };
+  const openAnalysisSource = (type: "note" | "object", sourceId: string) => {
+    if (!guardUnsaved()) return;
+    if (view === "dashboard") setComposerDirty(false);
+    setAnalysisScope(null); setOpenRunId(null); setAnalysisTypes(undefined);
+    if (type === "note") {
+      setView("notes"); setSelectedNoteId(sourceId); setIsNewNote(false); setEditorDirty(false);
+    } else {
+      setView("map"); setSelectedObjectId(sourceId); setIsNewNote(false); setEditorDirty(false);
+    }
   };
 
   const createType = async () => {
     try {
       await readJson(await fetch("/api/types", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: typeName, icon: typeIcon, color: typeColor }) }));
-      setTypeName(""); setTypeFormOpen(false); await refresh(); setNotice("Tipo criado.");
+      setTypeName(""); setTypeFormOpen(false); await refresh(view === "objects" ? "" : search); setNotice("Tipo criado.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Falha ao criar tipo."); }
   };
 
@@ -171,7 +290,8 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     await readJson(await fetch("/api/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, id: itemId }) }));
     if (kind === "note") { setSelectedNoteId(null); setIsNewNote(false); }
     if (kind === "object") setSelectedObjectId(null);
-    await refresh();
+    if (kind === "type" && itemId === selectedTypeId) { setSelectedTypeId(null); setSelectedObjectId(null); setView("dashboard"); }
+    await refresh(view === "objects" ? "" : search);
   };
 
   const restore = async (file: File) => {
@@ -179,41 +299,56 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     try {
       const payload = JSON.parse(await file.text());
       const result = await readJson(await fetch("/api/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
-      await refresh(""); setSearch(""); setSelectedNoteId(null); setSelectedObjectId(null); setNotice(`Base restaurada. Cópia de segurança: ${result.safetyBackup}`);
+      await refresh(""); setSearch(""); setSelectedNoteId(null); setSelectedObjectId(null); setSelectedTypeId(null); setNotice(`Base restaurada. Cópia de segurança: ${result.safetyBackup}`);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Arquivo de backup inválido."); }
   };
 
-  return <main className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark"><BrainCircuit size={20} /></div><div><strong>Staff Chief</strong><span>segundo cérebro</span></div></div>
-      <button className="new-note-button" onClick={newNote}><Plus size={17} /> Nova nota</button>
+  const filteredPriorityFindings = state.priorityFindings.filter((finding) => isWithinRange(finding.createdAt, dateRange));
+  const resizeInspectorBy = (delta: number) => {
+    const current = inspectorWidth ?? inspectorRef.current?.getBoundingClientRect().width ?? 390;
+    const sidebarWidth = sidebarRef.current?.getBoundingClientRect().width ?? (sidebarCollapsed ? 72 : 275);
+    const maximum = Math.max(300, Math.min(960, window.innerWidth - sidebarWidth - 430));
+    setInspectorWidth(Math.min(maximum, Math.max(300, current + delta)));
+  };
+
+  const visibleObjects = state.objects.filter((object) => object.typeId === selectedTypeId && (!search.trim() || `${object.name} ${object.description}`.toLocaleLowerCase("pt-BR").includes(search.trim().toLocaleLowerCase("pt-BR"))));
+
+  return <main className="app-shell" style={{ "--sidebar-width": sidebarCollapsed ? "72px" : "275px", ...(inspectorWidth ? { "--inspector-width": `${inspectorWidth}px` } : {}) } as React.CSSProperties}>
+    <aside className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`} ref={sidebarRef}>
+      <button className="sidebar-collapse" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}</button>
+      <div className="brand"><div className="brand-mark"><BrainCircuit size={20} /></div><div className="brand-copy"><strong>Staff Chief</strong><span>segundo cérebro</span></div></div>
+      <button className="new-note-button" onClick={newNote} title="Nova nota"><Plus size={17} /><span className="sidebar-label">Nova nota</span></button>
       <nav className="main-nav" aria-label="Navegação principal">
-        <button className={view === "dashboard" ? "is-active" : ""} onClick={() => changeView("dashboard")}><LayoutDashboard size={17} /> Dashboard</button>
-        <button className={view === "map" ? "is-active" : ""} onClick={() => changeView("map")}><MapIcon size={17} /> Mapa <span>{state.objects.length}</span></button>
-        <button className={view === "notes" ? "is-active" : ""} onClick={() => changeView("notes")}><FileText size={17} /> Notas <span>{state.notes.length}</span></button>
+        <button title="Dashboard" className={view === "dashboard" ? "is-active" : ""} onClick={() => changeView("dashboard")}><LayoutDashboard size={17} /><span className="sidebar-label">Dashboard</span></button>
+        <button title="Mapa" className={view === "map" ? "is-active" : ""} onClick={() => changeView("map")}><MapIcon size={17} /><span className="sidebar-label">Mapa</span><span className="sidebar-count">{state.objects.length}</span></button>
+        <button title="Notas" className={view === "notes" ? "is-active" : ""} onClick={() => changeView("notes")}><FileText size={17} /><span className="sidebar-label">Notas</span><span className="sidebar-count">{state.notes.length}</span></button>
       </nav>
-      <div className="type-heading"><span>Tipos de objeto</span><button className="icon-button small" onClick={() => setTypeFormOpen((value) => !value)} aria-label="Novo tipo"><Plus size={14} /></button></div>
-      <div className="type-list">{state.objectTypes.map((type) => <div className="type-row" key={type.id}><button className="type-select" onClick={() => { setView("map"); const first = state.objects.find((object) => object.typeId === type.id); if (first) setSelectedObjectId(first.id); }}><span className="type-dot" style={{ background: type.color }}>{type.icon}</span><span>{type.name}</span><small>{state.objects.filter((object) => object.typeId === type.id).length}</small></button><button className="type-archive" title={`Arquivar ${type.name}`} aria-label={`Arquivar ${type.name}`} onClick={() => void archive("type", type.id)}><Archive size={12} /></button></div>)}</div>
+      <div className="type-heading"><span>Tipos de objeto</span><button className="icon-button small" onClick={() => { if (sidebarCollapsed) setSidebarCollapsed(false); setTypeFormOpen((value) => !value); }} aria-label="Novo tipo"><Plus size={14} /></button></div>
+      <div className="type-list">{state.objectTypes.map((type) => <div className={`type-row ${view === "objects" && selectedTypeId === type.id ? "is-active" : ""}`} key={type.id}><button className="type-select" onClick={() => { if (!guardUnsaved()) return; if (view === "dashboard") setComposerDirty(false); setSearch(""); setSelectedTypeId(type.id); setView("objects"); setIsNewNote(false); setEditorDirty(false); const first = state.objects.find((object) => object.typeId === type.id); setSelectedObjectId(first?.id ?? null); void refresh(""); }}><span className="type-dot" style={{ background: type.color }}>{type.icon}</span><span>{type.name}</span><small>{state.objects.filter((object) => object.typeId === type.id).length}</small></button><button className="type-archive" title={`Arquivar ${type.name}`} aria-label={`Arquivar ${type.name}`} onClick={() => void archive("type", type.id)}><Archive size={12} /></button></div>)}</div>
       {typeFormOpen && <div className="type-form"><div><input className="icon-field" value={typeIcon} onChange={(event) => setTypeIcon(event.target.value)} maxLength={8} aria-label="Ícone" /><input value={typeName} onChange={(event) => setTypeName(event.target.value)} placeholder="Nome do tipo" maxLength={60} /></div><div><input type="color" value={typeColor} onChange={(event) => setTypeColor(event.target.value)} /><button onClick={createType} disabled={!typeName.trim()}>Criar tipo</button></div></div>}
-      <div className="sidebar-footer"><a className="utility-button" href="/api/backup" download><DatabaseBackup size={15} /> Exportar backup</a><button className="utility-button" onClick={() => restoreInput.current?.click()}><Upload size={15} /> Restaurar base</button><input ref={restoreInput} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void restore(file); event.target.value = ""; }} /><div className="local-badge"><span /><strong>Somente local</strong><small>127.0.0.1</small></div></div>
+      <div className="sidebar-footer"><a className="utility-button" title="Exportar backup" href="/api/backup" download><DatabaseBackup size={15} /><span className="sidebar-label">Exportar backup</span></a><button className="utility-button" title="Restaurar base" onClick={() => restoreInput.current?.click()}><Upload size={15} /><span className="sidebar-label">Restaurar base</span></button><input ref={restoreInput} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void restore(file); event.target.value = ""; }} /><div className="local-badge"><span /><strong>Somente local</strong><small>127.0.0.1</small></div></div>
     </aside>
 
     <section className="workspace">
-      <header className="topbar"><div><span className="eyebrow">{viewTitles[view].subtitle}</span><h1>{viewTitles[view].title}</h1></div><div className="topbar-tools"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar notas…" />{search && <button onClick={() => setSearch("")} aria-label="Limpar"><X size={13} /></button>}</label></div></header>
+      <header className="topbar"><div><span className="eyebrow">{currentViewTitle.subtitle}</span><h1>{currentViewTitle.title}</h1></div><div className="topbar-tools"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === "objects" ? "Buscar objetos…" : "Buscar notas…"} />{search && <button onClick={() => setSearch("")} aria-label="Limpar"><X size={13} /></button>}</label></div></header>
       <div className="center-pane">
-        {view === "dashboard" && <Dashboard state={state} onOpenRun={setOpenRunId} onNewNote={newNote} onGoToNotes={() => setView("notes")} />}
+        {view === "dashboard" && <Dashboard state={state} dateRange={dateRange} onOpenRun={setOpenRunId} onNewNote={newNote} onGoToNotes={() => changeView("notes")} onComposerDirty={setComposerDirty} onComposerSaved={() => { void refresh(); setNotice("Nota adicionada."); }} onSelectObject={selectObject} />}
         {view === "map" && <KnowledgeMap state={state} selectedObjectId={selectedObjectId} onSelectObject={setSelectedObjectId} />}
         {view === "notes" && <NotesList notes={state.notes} selectedId={selectedNoteId} onSelect={selectNote} onNew={newNote} />}
+        {view === "objects" && <ObjectsList typeName={selectedType?.name ?? "Objetos"} objects={visibleObjects} notes={state.notes} selectedId={selectedObjectId} onSelect={setSelectedObjectId} />}
       </div>
     </section>
 
-    <aside className="inspector">
-      {view === "dashboard" && <FindingSummary findings={state.priorityFindings} onOpenRun={setOpenRunId} />}
+    <aside className="inspector" ref={inspectorRef}>
+      <div className="inspector-resizer" role="separator" aria-label="Redimensionar painel direito" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => { event.currentTarget.focus(); event.preventDefault(); setResizingInspector(true); }} onDoubleClick={() => setInspectorWidth(null)} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); resizeInspectorBy(16); } if (event.key === "ArrowRight") { event.preventDefault(); resizeInspectorBy(-16); } }} />
+      {view === "dashboard" && <div className="inspector-stack dashboard-inspector"><DateFilter value={dateRange} onChange={setDateRange} /><FindingSummary findings={filteredPriorityFindings} onOpenRun={setOpenRunId} onAnalyze={() => setAnalysisLauncherOpen(true)} /></div>}
       {view === "map" && <ObjectInspector key={selectedObject?.id ?? "no-object"} object={selectedObject} state={state} onAnalyze={(id) => setAnalysisScope({ type: "object", id })} onArchive={(id) => void archive("object", id)} onChanged={() => void refresh()} />}
+      {view === "objects" && <ObjectInspector key={selectedObject?.id ?? "no-object"} object={selectedObject} state={state} onAnalyze={(id) => setAnalysisScope({ type: "object", id })} onArchive={(id) => void archive("object", id)} onChanged={() => void refresh("")} />}
       {view === "notes" && <RichNoteEditor key={isNewNote ? "new-note" : selectedNote?.id ?? "no-note"} note={selectedNote} isNew={isNewNote} objectTypes={state.objectTypes} objects={state.objects} onDirtyChange={setEditorDirty} onSaved={(note) => { setSelectedNoteId(note.id); setIsNewNote(false); setEditorDirty(false); void refresh(); }} onAnalyze={(id) => setAnalysisScope({ type: "note", id })} onArchive={(id) => void archive("note", id)} onSelectObject={selectObject} />}
     </aside>
 
-    {(analysisScope || openRunId) && <AnalysisDialog key={openRunId ?? `${analysisScope?.type}:${analysisScope?.id}`} scope={analysisScope} existingRunId={openRunId} notes={state.notes} objects={state.objects} onOpenSource={(type, sourceId) => { setAnalysisScope(null); setOpenRunId(null); if (type === "note") { setView("notes"); setSelectedNoteId(sourceId); setIsNewNote(false); setEditorDirty(false); } else { setView("map"); setSelectedObjectId(sourceId); } }} onClose={() => { setAnalysisScope(null); setOpenRunId(null); }} onChanged={refresh} />}
+    {analysisLauncherOpen && <AnalysisLauncherDialog notes={state.notes} objects={state.objects} onClose={() => setAnalysisLauncherOpen(false)} onContinue={(scope, types) => { setAnalysisLauncherOpen(false); setAnalysisTypes(types); setAnalysisScope(scope); }} />}
+    {(analysisScope || openRunId) && <AnalysisDialog key={openRunId ?? `${analysisScope?.type}:${analysisScope?.id}`} scope={analysisScope} existingRunId={openRunId} analysisTypes={analysisTypes} notes={state.notes} objects={state.objects} onOpenSource={openAnalysisSource} onClose={() => { setAnalysisScope(null); setOpenRunId(null); setAnalysisTypes(undefined); }} onChanged={() => refresh(view === "objects" ? "" : search)} />}
     {notice && <div className="toast"><span>{notice}</span><button onClick={() => setNotice("")}><X size={14} /></button></div>}
   </main>;
 }

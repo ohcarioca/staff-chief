@@ -1,14 +1,8 @@
 import "server-only";
 
-import type { AnalysisSnapshot, SpecialistOutput } from "@/lib/contracts";
+import type { AnalysisSnapshot, AnalysisType, SpecialistOutput } from "@/lib/contracts";
 
-export type SpecialistName =
-  | "connections"
-  | "risks"
-  | "contradictions"
-  | "gaps"
-  | "follow_ups"
-  | "consolidation";
+export type SpecialistName = AnalysisType | "consolidation";
 
 export interface AnalysisProvider {
   readonly id: string;

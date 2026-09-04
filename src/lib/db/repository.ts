@@ -6,6 +6,7 @@ import { z } from "zod";
 import type {
   AnalysisRunRecord,
   AnalysisSnapshot,
+  AnalysisType,
   AppState,
   FindingCategory,
   FindingRecord,
@@ -393,16 +394,18 @@ export function buildAnalysisSnapshot(scopeType: "note" | "object", scopeId: str
   };
 }
 
-const stepNames = ["connections", "risks", "contradictions", "gaps", "follow_ups", "consolidation"] as const;
+const analysisTypes: AnalysisType[] = ["connections", "risks", "contradictions", "gaps", "follow_ups"];
 
-export function createAnalysisRun(snapshot: AnalysisSnapshot) {
+export function createAnalysisRun(snapshot: AnalysisSnapshot, selectedTypes: AnalysisType[] = analysisTypes) {
   const { sqlite } = getDatabase();
   const runId = id("analysis");
+  const selected = analysisTypes.filter((type) => selectedTypes.includes(type));
+  if (!selected.length) throw new Error("Selecione ao menos um tipo de análise.");
   sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO analysis_runs (id,provider,scope_type,scope_id,snapshot_json,status,created_at)
       VALUES (?,?,?,?,?,'queued',?)`).run(runId, "codex-cli", snapshot.scope.type, snapshot.scope.id, JSON.stringify(snapshot), now());
     const insertStep = sqlite.prepare(`INSERT INTO analysis_steps (id,run_id,name,position,status) VALUES (?,?,?,?,'queued')`);
-    stepNames.forEach((name, position) => insertStep.run(id("step"), runId, name, position));
+    [...selected, "consolidation"].forEach((name, position) => insertStep.run(id("step"), runId, name, position));
   })();
   return runId;
 }

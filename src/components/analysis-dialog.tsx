@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, ChevronRight, Circle, LoaderCircle, RefreshCw, Sparkles, Square, X } from "lucide-react";
-import type { AnalysisRunRecord, AnalysisSnapshot, FindingRecord, KnowledgeObjectRecord, NoteRecord } from "@/lib/contracts";
+import type { AnalysisRunRecord, AnalysisSnapshot, AnalysisType, FindingRecord, KnowledgeObjectRecord, NoteRecord } from "@/lib/contracts";
 
 type Scope = { type: "note" | "object"; id: string };
 
@@ -14,6 +14,7 @@ interface AnalysisDialogProps {
   onOpenSource(type: "note" | "object", id: string): void;
   onClose(): void;
   onChanged(): void | Promise<void>;
+  analysisTypes?: AnalysisType[];
 }
 
 const stepLabels: Record<string, string> = {
@@ -35,7 +36,7 @@ async function readJson(response: Response) {
   return data;
 }
 
-export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSource, onClose, onChanged }: AnalysisDialogProps) {
+export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSource, onClose, onChanged, analysisTypes }: AnalysisDialogProps) {
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
   const [run, setRun] = useState<AnalysisRunRecord | null>(null);
@@ -90,7 +91,7 @@ export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSou
     try {
       const result = await readJson(await fetch("/api/analysis/run", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id, selectedNoteIds: [...selectedNotes] }),
+        body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id, selectedNoteIds: [...selectedNotes], analysisTypes }),
       }));
       setRunId(result.runId);
     } catch (startError) {
@@ -140,6 +141,7 @@ export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSou
         {loading && <div className="loading-row"><LoaderCircle className="spin" size={18} /> Preparando o subgrafo…</div>}
         {snapshot && <>
           <div className="scope-card"><span>Escopo selecionado</span><strong>{snapshot.scope.label}</strong><small>{snapshot.objects.length} objetos · {snapshot.notes.length} notas relacionadas</small></div>
+          {analysisTypes?.length && <div className="analysis-selection-summary"><span>Especialistas selecionados</span><div>{analysisTypes.map((type) => <strong key={type}>{stepLabels[type]}</strong>)}</div></div>}
           <div className="privacy-notice"><AlertTriangle size={17} /><p><strong>Confirme antes do envio.</strong> Somente os itens marcados abaixo serão enviados ao Codex usando sua sessão local. Nada será alterado automaticamente.</p></div>
           <div className="preview-section-title"><strong>Notas incluídas</strong><span>{selectedCount}/50</span></div>
           <div className="preview-list">

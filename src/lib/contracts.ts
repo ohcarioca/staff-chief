@@ -1,4 +1,4 @@
-export type ViewName = "dashboard" | "map" | "notes";
+export type ViewName = "dashboard" | "map" | "notes" | "objects";
 export type FindingCategory =
   | "connection"
   | "risk"
@@ -7,6 +7,7 @@ export type FindingCategory =
   | "follow_up";
 export type FindingPriority = "low" | "medium" | "high";
 export type FindingStatus = "open" | "resolved" | "dismissed";
+export type AnalysisType = "connections" | "risks" | "contradictions" | "gaps" | "follow_ups";
 export type AnalysisStatus =
   | "queued"
   | "running"

@@ -80,6 +80,12 @@ describe("base local de conhecimento", () => {
     expect(getRunSnapshot(runId)).toEqual(snapshot);
   });
 
+  it("cria somente os especialistas escolhidos e a consolidação", () => {
+    const snapshot = buildAnalysisSnapshot("note", getAppState().notes[0].id);
+    const runId = createAnalysisRun(snapshot, ["risks", "gaps"]);
+    expect(getAnalysisRun(runId)?.steps?.map((step) => step.name)).toEqual(["risks", "gaps", "consolidation"]);
+  });
+
   it("arquiva notas, objetos e tipos sem removê-los do backup", () => {
     const typeId = createObjectType({ name: "Área", icon: "A", color: "#336699" });
     const note = saveNote({

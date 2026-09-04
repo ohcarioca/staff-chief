@@ -5,7 +5,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Mention from "@tiptap/extension-mention";
 import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
-import { Archive, Bold, Heading2, List, Save, Sparkles } from "lucide-react";
+import { Archive, Bold, Heading2, Italic, List, ListOrdered, Quote, Redo2, Save, Sparkles, Strikethrough, Undo2 } from "lucide-react";
 import type { KnowledgeObjectRecord, NoteRecord, ObjectTypeRecord } from "@/lib/contracts";
 
 type MentionItem = {
@@ -152,11 +152,12 @@ interface RichNoteEditorProps {
   onArchive(noteId: string): void;
   onSelectObject(objectId: string): void;
   onDirtyChange(dirty: boolean): void;
+  compact?: boolean;
 }
 
-export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onAnalyze, onArchive, onSelectObject, onDirtyChange }: RichNoteEditorProps) {
+export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onAnalyze, onArchive, onSelectObject, onDirtyChange, compact = false }: RichNoteEditorProps) {
   const [title, setTitle] = useState(note?.title ?? "");
-  const [dirty, setDirty] = useState(isNew);
+  const [dirty, setDirty] = useState(isNew && !compact);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const extensions = useMemo(() => [
@@ -225,9 +226,9 @@ export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onA
     return <div className="empty-inspector"><div className="empty-orbit">✦</div><h3>Selecione uma nota</h3><p>O conteúdo e as referências aparecem aqui.</p></div>;
   }
 
-  return <section className="editor-panel">
+  return <section className={`editor-panel ${compact ? "editor-panel-composer" : ""}`}>
     <header className="inspector-header">
-      <div><span className="eyebrow">{isNew ? "Nova nota" : "Nota"}</span><span className={`save-state ${dirty ? "is-dirty" : ""}`}>{dirty ? "Alterações não salvas" : "Salva"}</span></div>
+      <div><span className="eyebrow">{isNew ? "Nova nota" : "Nota"}</span><span className={`save-state ${dirty ? "is-dirty" : ""}`}>{dirty ? "Alterações não salvas" : compact ? "Pronta para escrever" : "Salva"}</span></div>
       <div className="header-actions">
         {!isNew && note && <button className="icon-button" title="Arquivar nota" onClick={() => onArchive(note.id)}><Archive size={16} /></button>}
         {!isNew && note && <button className="secondary-button" onClick={() => onAnalyze(note.id)}><Sparkles size={15} /> Analisar</button>}
@@ -235,10 +236,18 @@ export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onA
       </div>
     </header>
     <input className="note-title-input" value={title} onChange={(event) => { setTitle(event.target.value); setDirty(true); onDirtyChange(true); }} placeholder="Título opcional" maxLength={240} />
-    <div className="editor-toolbar" aria-label="Formatação">
-      <button className={editor?.isActive("bold") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleBold().run()} title="Negrito"><Bold size={16} /></button>
-      <button className={editor?.isActive("heading", { level: 2 }) ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Título"><Heading2 size={16} /></button>
-      <button className={editor?.isActive("bulletList") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleBulletList().run()} title="Lista"><List size={16} /></button>
+    <div className="editor-toolbar" role="toolbar" aria-label="Formatação da nota">
+      <button type="button" className={editor?.isActive("bold") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleBold().run()} title="Negrito" aria-label="Negrito"><Bold size={16} /></button>
+      <button type="button" className={editor?.isActive("italic") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleItalic().run()} title="Itálico" aria-label="Itálico"><Italic size={16} /></button>
+      <button type="button" className={editor?.isActive("strike") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleStrike().run()} title="Tachado" aria-label="Tachado"><Strikethrough size={16} /></button>
+      <span className="toolbar-divider" />
+      <button type="button" className={editor?.isActive("heading", { level: 2 }) ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Título" aria-label="Título"><Heading2 size={16} /></button>
+      <button type="button" className={editor?.isActive("bulletList") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleBulletList().run()} title="Lista com marcadores" aria-label="Lista com marcadores"><List size={16} /></button>
+      <button type="button" className={editor?.isActive("orderedList") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleOrderedList().run()} title="Lista numerada" aria-label="Lista numerada"><ListOrdered size={16} /></button>
+      <button type="button" className={editor?.isActive("blockquote") ? "is-active" : ""} onClick={() => editor?.chain().focus().toggleBlockquote().run()} title="Citação" aria-label="Citação"><Quote size={16} /></button>
+      <span className="toolbar-divider" />
+      <button type="button" onClick={() => editor?.chain().focus().undo().run()} disabled={!editor?.can().undo()} title="Desfazer" aria-label="Desfazer"><Undo2 size={16} /></button>
+      <button type="button" onClick={() => editor?.chain().focus().redo().run()} disabled={!editor?.can().redo()} title="Refazer" aria-label="Refazer"><Redo2 size={16} /></button>
       <span className="toolbar-hint">Digite <kbd>@</kbd> para relacionar</span>
     </div>
     <EditorContent editor={editor} className="editor-scroll" />

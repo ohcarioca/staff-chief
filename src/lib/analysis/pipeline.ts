@@ -39,8 +39,9 @@ async function executePipeline(runId: string, retryOnly: boolean) {
   try {
     updateRun(runId, "running");
     const existing = getAnalysisRun(runId);
+    const runSpecialists = specialists.filter((specialist) => existing?.steps?.some((step) => step.name === specialist));
     const failedNames = new Set(existing?.steps?.filter((step) => step.status === "failed").map((step) => step.name) ?? []);
-    for (const specialist of specialists) {
+    for (const specialist of runSpecialists) {
       if (retryOnly && !failedNames.has(specialist)) continue;
       if (controller.signal.aborted) throw new DOMException("Análise cancelada.", "AbortError");
       updateStep(runId, specialist, "running");
