@@ -47,19 +47,20 @@ export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSou
 
   useEffect(() => {
     if (!scope || existingRunId) return;
-    const controller = new AbortController();
+    let active = true;
     fetch("/api/analysis/preview", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id }), signal: controller.signal,
+      body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id }),
     }).then(readJson).then((data: AnalysisSnapshot) => {
+      if (!active) return;
       setSnapshot(data);
       setSelectedNotes(new Set(data.notes.slice(0, 50).map((note) => note.id)));
     }).catch((previewError) => {
-      if (previewError instanceof DOMException && previewError.name === "AbortError") return;
+      if (!active) return;
       setError(previewError instanceof Error ? previewError.message : "Falha ao preparar a análise.");
     })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [scope, existingRunId]);
 
   useEffect(() => {
