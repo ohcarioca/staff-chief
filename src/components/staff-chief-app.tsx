@@ -140,9 +140,9 @@ function DateFilter({ value, onChange }: { value: DateRange; onChange(value: Dat
   </section>;
 }
 
-function FindingSummary({ findings, onOpenRun, onAnalyze }: { findings: FindingRecord[]; onOpenRun(id: string): void; onAnalyze(): void }) {
+function FindingSummary({ findings, onOpenFinding, onAnalyze }: { findings: FindingRecord[]; onOpenFinding(runId: string, findingId: string): void; onAnalyze(): void }) {
   return <section className="finding-summary"><header className="inspector-title"><span className="eyebrow">Prioridades</span><div className="inspector-title-row"><h2>Achados abertos</h2><button className="ai-analysis-button" onClick={onAnalyze}><Sparkles size={14} /> Análise IA</button></div><p>Sinais encontrados somente nas análises que você iniciou.</p></header>
-    <div className="compact-findings">{findings.length ? findings.map((finding) => <button key={finding.id} onClick={() => onOpenRun(finding.runId)} className={`compact-finding priority-${finding.priority}`}><span>{categoryLabels[finding.category]}</span><strong>{finding.title}</strong><small>{finding.priority === "high" ? "Prioridade alta" : finding.priority === "medium" ? "Prioridade média" : "Prioridade baixa"} · {finding.confidence}%</small></button>) : <div className="empty-inspector compact"><div className="empty-orbit">✓</div><h3>Nada pendente</h3><p>Achados abertos aparecerão aqui.</p></div>}</div>
+    <div className="compact-findings">{findings.length ? findings.map((finding) => <button key={finding.id} onClick={() => onOpenFinding(finding.runId, finding.id)} className={`compact-finding priority-${finding.priority}`}><span>{categoryLabels[finding.category]}</span><strong>{finding.title}</strong><small>{finding.priority === "high" ? "Prioridade alta" : finding.priority === "medium" ? "Prioridade média" : "Prioridade baixa"} · {finding.confidence}%</small></button>) : <div className="empty-inspector compact"><div className="empty-orbit">✓</div><h3>Nada pendente</h3><p>Achados abertos aparecerão aqui.</p></div>}</div>
   </section>;
 }
 
@@ -199,6 +199,7 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const [analysisTypes, setAnalysisTypes] = useState<AnalysisType[] | undefined>(undefined);
   const [analysisLauncherOpen, setAnalysisLauncherOpen] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  const [openFindingId, setOpenFindingId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorWidth, setInspectorWidth] = useState<number | null>(null);
   const [resizingInspector, setResizingInspector] = useState(false);
@@ -269,7 +270,7 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const openAnalysisSource = (type: "note" | "object", sourceId: string) => {
     if (!guardUnsaved()) return;
     if (view === "dashboard") setComposerDirty(false);
-    setAnalysisScope(null); setOpenRunId(null); setAnalysisTypes(undefined);
+    setAnalysisScope(null); setOpenRunId(null); setOpenFindingId(null); setAnalysisTypes(undefined);
     if (type === "note") {
       setView("notes"); setSelectedNoteId(sourceId); setIsNewNote(false); setEditorDirty(false);
     } else {
@@ -332,7 +333,7 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     <section className="workspace">
       <header className="topbar"><div><span className="eyebrow">{currentViewTitle.subtitle}</span><h1>{currentViewTitle.title}</h1></div><div className="topbar-tools"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === "objects" ? "Buscar objetos…" : "Buscar notas…"} />{search && <button onClick={() => setSearch("")} aria-label="Limpar"><X size={13} /></button>}</label></div></header>
       <div className="center-pane">
-        {view === "dashboard" && <Dashboard state={state} dateRange={dateRange} onOpenRun={setOpenRunId} onNewNote={newNote} onGoToNotes={() => changeView("notes")} onComposerDirty={setComposerDirty} onComposerSaved={() => { void refresh(); setNotice("Nota adicionada."); }} onSelectObject={selectObject} />}
+        {view === "dashboard" && <Dashboard state={state} dateRange={dateRange} onOpenRun={(runId) => { setOpenFindingId(null); setOpenRunId(runId); }} onNewNote={newNote} onGoToNotes={() => changeView("notes")} onComposerDirty={setComposerDirty} onComposerSaved={() => { void refresh(); setNotice("Nota adicionada."); }} onSelectObject={selectObject} />}
         {view === "map" && <KnowledgeMap state={state} selectedObjectId={selectedObjectId} onSelectObject={setSelectedObjectId} />}
         {view === "notes" && <NotesList notes={state.notes} selectedId={selectedNoteId} onSelect={selectNote} onNew={newNote} />}
         {view === "objects" && <ObjectsList typeName={selectedType?.name ?? "Objetos"} objects={visibleObjects} notes={state.notes} selectedId={selectedObjectId} onSelect={setSelectedObjectId} />}
@@ -341,14 +342,14 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
 
     <aside className="inspector" ref={inspectorRef}>
       <div className="inspector-resizer" role="separator" aria-label="Redimensionar painel direito" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => { event.currentTarget.focus(); event.preventDefault(); setResizingInspector(true); }} onDoubleClick={() => setInspectorWidth(null)} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); resizeInspectorBy(16); } if (event.key === "ArrowRight") { event.preventDefault(); resizeInspectorBy(-16); } }} />
-      {view === "dashboard" && <div className="inspector-stack dashboard-inspector"><DateFilter value={dateRange} onChange={setDateRange} /><FindingSummary findings={filteredPriorityFindings} onOpenRun={setOpenRunId} onAnalyze={() => setAnalysisLauncherOpen(true)} /></div>}
+      {view === "dashboard" && <div className="inspector-stack dashboard-inspector"><DateFilter value={dateRange} onChange={setDateRange} /><FindingSummary findings={filteredPriorityFindings} onOpenFinding={(runId, findingId) => { setOpenFindingId(findingId); setOpenRunId(runId); }} onAnalyze={() => setAnalysisLauncherOpen(true)} /></div>}
       {view === "map" && <ObjectInspector key={selectedObject?.id ?? "no-object"} object={selectedObject} state={state} onAnalyze={(id) => setAnalysisScope({ type: "object", id })} onArchive={(id) => void archive("object", id)} onChanged={() => void refresh()} />}
       {view === "objects" && <ObjectInspector key={selectedObject?.id ?? "no-object"} object={selectedObject} state={state} onAnalyze={(id) => setAnalysisScope({ type: "object", id })} onArchive={(id) => void archive("object", id)} onChanged={() => void refresh("")} />}
       {view === "notes" && <RichNoteEditor key={isNewNote ? "new-note" : selectedNote?.id ?? "no-note"} note={selectedNote} isNew={isNewNote} objectTypes={state.objectTypes} objects={state.objects} onDirtyChange={setEditorDirty} onSaved={(note) => { setSelectedNoteId(note.id); setIsNewNote(false); setEditorDirty(false); void refresh(); }} onAnalyze={(id) => setAnalysisScope({ type: "note", id })} onArchive={(id) => void archive("note", id)} onSelectObject={selectObject} />}
     </aside>
 
     {analysisLauncherOpen && <AnalysisLauncherDialog notes={state.notes} objects={state.objects} onClose={() => setAnalysisLauncherOpen(false)} onContinue={(scope, types) => { setAnalysisLauncherOpen(false); setAnalysisTypes(types); setAnalysisScope(scope); }} />}
-    {(analysisScope || openRunId) && <AnalysisDialog key={openRunId ?? `${analysisScope?.type}:${analysisScope?.id}`} scope={analysisScope} existingRunId={openRunId} analysisTypes={analysisTypes} notes={state.notes} objects={state.objects} onOpenSource={openAnalysisSource} onClose={() => { setAnalysisScope(null); setOpenRunId(null); setAnalysisTypes(undefined); }} onChanged={() => refresh(view === "objects" ? "" : search)} />}
+    {(analysisScope || openRunId) && <AnalysisDialog key={openRunId ? `${openRunId}:${openFindingId ?? "report"}` : `${analysisScope?.type}:${analysisScope?.id}`} scope={analysisScope} existingRunId={openRunId} initialFindingId={openFindingId} analysisTypes={analysisTypes} notes={state.notes} objects={state.objects} onOpenSource={openAnalysisSource} onClose={() => { setAnalysisScope(null); setOpenRunId(null); setOpenFindingId(null); setAnalysisTypes(undefined); }} onChanged={() => refresh(view === "objects" ? "" : search)} />}
     {notice && <div className="toast"><span>{notice}</span><button onClick={() => setNotice("")}><X size={14} /></button></div>}
   </main>;
 }

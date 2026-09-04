@@ -9,6 +9,7 @@ type Scope = { type: "note" | "object"; id: string };
 interface AnalysisDialogProps {
   scope: Scope | null;
   existingRunId?: string | null;
+  initialFindingId?: string | null;
   notes: NoteRecord[];
   objects: KnowledgeObjectRecord[];
   onOpenSource(type: "note" | "object", id: string): void;
@@ -36,7 +37,7 @@ async function readJson(response: Response) {
   return data;
 }
 
-export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSource, onClose, onChanged, analysisTypes }: AnalysisDialogProps) {
+export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, objects, onOpenSource, onClose, onChanged, analysisTypes }: AnalysisDialogProps) {
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
   const [run, setRun] = useState<AnalysisRunRecord | null>(null);
@@ -44,6 +45,7 @@ export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSou
   const [loading, setLoading] = useState(Boolean(scope && !existingRunId));
   const [error, setError] = useState("");
   const [streamVersion, setStreamVersion] = useState(0);
+  const [expandedFindingId, setExpandedFindingId] = useState<string | null>(initialFindingId ?? null);
   const terminal = run ? ["completed", "partial", "failed", "cancelled"].includes(run.status) : false;
 
   useEffect(() => {
@@ -172,20 +174,38 @@ export function AnalysisDialog({ scope, existingRunId, notes, objects, onOpenSou
             </div>)}
           </div>
           {!!run.findings?.length && <div className="finding-list">
-            {run.findings.map((finding) => <article key={finding.id} className={`finding-card priority-${finding.priority} finding-${finding.status}`}>
-              <div className="finding-meta"><span>{categoryLabels[finding.category]}</span><span>{finding.priority === "high" ? "Alta" : finding.priority === "medium" ? "Média" : "Baixa"} · {finding.confidence}%</span></div>
-              <h3>{finding.title}</h3><p>{finding.explanation}</p>
-              {finding.suggestedAction && <div className="suggested-action"><ChevronRight size={14} /><span>{finding.suggestedAction}</span></div>}
-              <div className="finding-sources">
-                {finding.sourceNoteIds.map((sourceId) => <button key={`note:${sourceId}`} onClick={() => onOpenSource("note", sourceId)}>Nota: {notes.find((note) => note.id === sourceId)?.title || notes.find((note) => note.id === sourceId)?.contentText.slice(0, 32) || sourceId}</button>)}
-                {finding.sourceObjectIds.map((sourceId) => <button key={`object:${sourceId}`} onClick={() => onOpenSource("object", sourceId)}>Objeto: {objects.find((object) => object.id === sourceId)?.name || sourceId}</button>)}
-              </div>
-              {finding.status === "open" && <div className="finding-actions">
-                {finding.category === "connection" && finding.sourceObjectIds.length >= 2 && <button onClick={() => actOnFinding(finding, "accept")}>Aceitar relação</button>}
-                <button onClick={() => actOnFinding(finding, "resolved")}>Resolver</button>
-                <button onClick={() => actOnFinding(finding, "dismissed")}>Descartar</button>
-              </div>}
-            </article>)}
+            {run.findings.map((finding) => {
+              const isExpanded = expandedFindingId === finding.id;
+              const detailsId = `finding-details-${finding.id}`;
+              return <article key={finding.id} className={`finding-card priority-${finding.priority} finding-${finding.status} ${isExpanded ? "is-expanded" : ""}`}>
+                <button
+                  type="button"
+                  className="finding-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
+                  onClick={() => setExpandedFindingId((current) => current === finding.id ? null : finding.id)}
+                >
+                  <span className="finding-heading">
+                    <span className="finding-meta"><span>{categoryLabels[finding.category]}</span><span>{finding.priority === "high" ? "Alta" : finding.priority === "medium" ? "Média" : "Baixa"} · {finding.confidence}%</span></span>
+                    <span className="finding-title">{finding.title}</span>
+                  </span>
+                  <ChevronRight className="finding-chevron" size={16} />
+                </button>
+                {isExpanded && <div className="finding-details" id={detailsId}>
+                  <p>{finding.explanation}</p>
+                  {finding.suggestedAction && <div className="suggested-action"><ChevronRight size={14} /><span>{finding.suggestedAction}</span></div>}
+                  <div className="finding-sources">
+                    {finding.sourceNoteIds.map((sourceId) => <button key={`note:${sourceId}`} onClick={() => onOpenSource("note", sourceId)}>Nota: {notes.find((note) => note.id === sourceId)?.title || notes.find((note) => note.id === sourceId)?.contentText.slice(0, 32) || sourceId}</button>)}
+                    {finding.sourceObjectIds.map((sourceId) => <button key={`object:${sourceId}`} onClick={() => onOpenSource("object", sourceId)}>Objeto: {objects.find((object) => object.id === sourceId)?.name || sourceId}</button>)}
+                  </div>
+                  {finding.status === "open" && <div className="finding-actions">
+                    {finding.category === "connection" && finding.sourceObjectIds.length >= 2 && <button onClick={() => actOnFinding(finding, "accept")}>Aceitar relação</button>}
+                    <button onClick={() => actOnFinding(finding, "resolved")}>Resolver</button>
+                    <button onClick={() => actOnFinding(finding, "dismissed")}>Descartar</button>
+                  </div>}
+                </div>}
+              </article>;
+            })}
           </div>}
           {terminal && !run.findings?.length && <div className="empty-report"><Sparkles size={24} /><h3>Nenhum achado sustentado pelas fontes</h3><p>O relatório foi preservado, mas os especialistas não encontraram evidências suficientes.</p></div>}
           {(run.error || error) && <p className="inline-error">{error || run.error}</p>}

@@ -15,6 +15,10 @@ All notable changes to Staff Chief are documented in this file. The format follo
 - Internal Codex prompt instructions, automated test descriptions, test fixtures, and startup-helper messages now use English.
 - User-facing application copy and AI result language remain Brazilian Portuguese.
 
+### Fixed
+
+- Analysis findings now open as a single-expand accordion, preserving the finding selected from the dashboard instead of expanding the entire report.
+
 ## [0.1.0] - 2026-09-04
 
 ### Added
