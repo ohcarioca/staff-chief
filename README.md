@@ -71,6 +71,8 @@ Set `STAFF_CHIEF_DATA_DIR` before starting the app to use a different data direc
 
 Use the sidebar actions to export or restore a backup. See [Backup and recovery](docs/BACKUP_AND_RECOVERY.md) for the format, safeguards, and recovery procedure.
 
+For repeatable AI evaluation, generate the synthetic isolated dataset described in [AI test data](docs/AI_TEST_DATA.md). It includes three deliberately problematic scenarios and one false-positive control scenario.
+
 ## AI analysis flow
 
 1. Select a note or object and choose one or more analysis lenses.
@@ -114,6 +116,7 @@ pnpm build
 - [Local API reference](docs/API.md)
 - [Data model](docs/DATA_MODEL.md)
 - [AI analysis](docs/AI_ANALYSIS.md)
+- [AI test data](docs/AI_TEST_DATA.md)
 - [Security and privacy](docs/SECURITY_AND_PRIVACY.md)
 - [Backup and recovery](docs/BACKUP_AND_RECOVERY.md)
 - [Development guide](docs/DEVELOPMENT.md)

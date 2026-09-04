@@ -6,6 +6,7 @@ This directory contains the operational and technical documentation for Staff Ch
 
 - [User guide](USER_GUIDE.md): workspace, notes, mentions, objects, graph, findings, and filters.
 - [AI analysis](AI_ANALYSIS.md): consent flow, analysis lenses, execution, and result handling.
+- [AI test data](AI_TEST_DATA.md): isolated synthetic scenarios and an evaluation rubric for AI findings.
 - [Backup and recovery](BACKUP_AND_RECOVERY.md): exports, restores, and safety copies.
 - [Troubleshooting](TROUBLESHOOTING.md): common startup, database, browser, and Codex problems.
 - [Security and privacy](SECURITY_AND_PRIVACY.md): trust boundaries, protections, and limitations.

@@ -8,6 +8,7 @@ All notable changes to Staff Chief are documented in this file. The format follo
 
 - Comprehensive English project, user, architecture, data, AI, security, backup, development, troubleshooting, contribution, and security-policy documentation.
 - Public repository metadata and explicit project language conventions.
+- Isolated synthetic AI test data with three diagnostic scenarios, one false-positive control, custom object types, and a documented evaluation rubric.
 
 ### Changed
 
