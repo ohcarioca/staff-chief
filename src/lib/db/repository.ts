@@ -468,10 +468,35 @@ export function acceptFinding(findingId: string) {
   return relationId;
 }
 
-const backupTableSchema = z.record(z.string(), z.array(z.record(z.string(), z.unknown())));
-const backupSchema = z.object({ version: z.literal(1), exportedAt: z.string(), tables: backupTableSchema });
-
 const backupTables = ["object_types", "objects", "notes", "note_mentions", "relationships", "analysis_runs", "analysis_steps", "findings", "finding_sources"] as const;
+const backupColumns = {
+  object_types: ["id", "name", "name_normalized", "icon", "color", "created_at", "archived_at"],
+  objects: ["id", "type_id", "name", "name_normalized", "description", "created_at", "updated_at", "archived_at"],
+  notes: ["id", "title", "content_json", "content_text", "created_at", "updated_at", "archived_at"],
+  note_mentions: ["note_id", "object_id"],
+  relationships: ["id", "source_object_id", "target_object_id", "label", "origin", "finding_id", "created_at", "archived_at"],
+  analysis_runs: ["id", "provider", "scope_type", "scope_id", "snapshot_json", "status", "error", "created_at", "completed_at"],
+  analysis_steps: ["id", "run_id", "name", "position", "status", "output_json", "error", "started_at", "completed_at"],
+  findings: ["id", "run_id", "category", "title", "explanation", "priority", "confidence", "suggested_action", "status", "created_at"],
+  finding_sources: ["finding_id", "source_type", "source_id"],
+} as const satisfies Record<(typeof backupTables)[number], readonly string[]>;
+const backupValueSchema = z.union([z.string(), z.number(), z.null()]);
+const backupRowSchema = z.record(z.string(), backupValueSchema);
+const backupSchema = z.object({
+  version: z.literal(1),
+  exportedAt: z.iso.datetime(),
+  tables: z.object({
+    object_types: z.array(backupRowSchema),
+    objects: z.array(backupRowSchema),
+    notes: z.array(backupRowSchema),
+    note_mentions: z.array(backupRowSchema),
+    relationships: z.array(backupRowSchema),
+    analysis_runs: z.array(backupRowSchema),
+    analysis_steps: z.array(backupRowSchema),
+    findings: z.array(backupRowSchema),
+    finding_sources: z.array(backupRowSchema),
+  }).strict(),
+}).strict();
 
 export function exportBackup() {
   const { sqlite } = getDatabase();
@@ -482,6 +507,16 @@ export function exportBackup() {
 
 export function restoreBackup(input: unknown) {
   const backup = backupSchema.parse(input);
+  for (const table of backupTables) {
+    const expectedColumns = backupColumns[table] as readonly string[];
+    const expectedColumnSet = new Set(expectedColumns);
+    for (const row of backup.tables[table]) {
+      const actualColumns = Object.keys(row);
+      if (actualColumns.length !== expectedColumns.length || actualColumns.some((column) => !expectedColumnSet.has(column))) {
+        throw new Error(`Backup inválido: colunas inesperadas na tabela ${table}.`);
+      }
+    }
+  }
   const { sqlite, path: databasePath } = getDatabase();
   const backupsDirectory = path.join(getDataDirectory(), "backups");
   fs.mkdirSync(backupsDirectory, { recursive: true });
@@ -492,11 +527,11 @@ export function restoreBackup(input: unknown) {
     [...backupTables].reverse().forEach((table) => sqlite.prepare(`DELETE FROM ${table}`).run());
     for (const table of backupTables) {
       const rows = backup.tables[table] ?? [];
+      const columns = backupColumns[table] as readonly string[];
+      const placeholders = columns.map(() => "?").join(",");
+      const insert = sqlite.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${placeholders})`);
       for (const row of rows) {
-        const columns = Object.keys(row);
-        if (!columns.length) continue;
-        const placeholders = columns.map(() => "?").join(",");
-        sqlite.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${placeholders})`).run(...columns.map((column) => row[column]));
+        insert.run(...columns.map((column) => row[column]));
       }
     }
     sqlite.prepare("DELETE FROM notes_fts").run();

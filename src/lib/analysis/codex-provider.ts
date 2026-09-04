@@ -53,38 +53,38 @@ const jsonSchema = {
 
 const specialties: Record<Exclude<SpecialistName, "consolidation">, { label: string; category: FindingCategory; instruction: string }> = {
   connections: {
-    label: "conexões e oportunidades", category: "connection",
-    instruction: "Identifique conexões úteis, padrões e oportunidades concretas entre pessoas, projetos e ideias.",
+    label: "connections and opportunities", category: "connection",
+    instruction: "Identify useful connections, patterns, and concrete opportunities across people, projects, and ideas.",
   },
   risks: {
-    label: "riscos", category: "risk",
-    instruction: "Identifique riscos gerenciais concretos, dependências frágeis, sinais de atraso e pontos de atenção.",
+    label: "risks", category: "risk",
+    instruction: "Identify concrete management risks, fragile dependencies, delay signals, and issues that need attention.",
   },
   contradictions: {
-    label: "contradições", category: "contradiction",
-    instruction: "Identifique afirmações incompatíveis, mudanças de direção ou informações que precisam ser reconciliadas.",
+    label: "contradictions", category: "contradiction",
+    instruction: "Identify incompatible statements, changes in direction, or information that needs reconciliation.",
   },
   gaps: {
-    label: "lacunas", category: "gap",
-    instruction: "Identifique informações, responsáveis, critérios, decisões ou próximos dados que estejam faltando.",
+    label: "gaps", category: "gap",
+    instruction: "Identify missing context, owners, criteria, decisions, or next pieces of information.",
   },
   follow_ups: {
     label: "follow-ups", category: "follow_up",
-    instruction: "Proponha follow-ups específicos, úteis e executáveis derivados diretamente das notas.",
+    instruction: "Propose specific, useful, and actionable follow-ups derived directly from the notes.",
   },
 };
 
 function buildPrompt(step: SpecialistName, snapshot: AnalysisSnapshot, previousOutputs: Array<{ specialist: string; output: SpecialistOutput }>) {
-  const rules = `Você integra um segundo cérebro gerencial pessoal. Analise somente os dados fornecidos.
-Não use ferramentas, não leia arquivos e não pesquise na web. Não invente fatos.
-Toda conclusão deve citar ao menos um ID existente em sourceNoteIds ou sourceObjectIds.
-Use português do Brasil, seja direto e retorne somente o JSON solicitado.`;
+  const rules = `You are part of a personal management knowledge system. Analyze only the supplied data.
+Do not use tools, read files, or browse the web. Do not invent facts.
+Every conclusion must cite at least one existing ID in sourceNoteIds or sourceObjectIds.
+Write all user-facing content in Brazilian Portuguese, be direct, and return only the requested JSON.`;
   if (step === "consolidation") {
-    return `${rules}\n\nTarefa: consolide os resultados dos especialistas. Remova duplicações, preserve divergências relevantes e mantenha no máximo 20 achados prioritários. Não crie fontes novas.\n\nDADOS:\n${JSON.stringify({ snapshot, specialistOutputs: previousOutputs })}`;
+    return `${rules}\n\nTask: consolidate the specialist results. Remove duplicates, preserve relevant disagreements, and keep at most 20 priority findings. Do not create new sources.\n\nDATA:\n${JSON.stringify({ snapshot, specialistOutputs: previousOutputs })}`;
   }
   const specialty = specialties[step];
-  return `${rules}\n\nVocê é o especialista em ${specialty.label}. ${specialty.instruction}
-Todos os achados devem usar category="${specialty.category}". Se não houver evidência suficiente, retorne findings vazio.\n\nDADOS:\n${JSON.stringify(snapshot)}`;
+  return `${rules}\n\nYou are the ${specialty.label} specialist. ${specialty.instruction}
+Every finding must use category="${specialty.category}". If there is insufficient evidence, return an empty findings array.\n\nDATA:\n${JSON.stringify(snapshot)}`;
 }
 
 export function validateSources(output: SpecialistOutput, snapshot: AnalysisSnapshot, expectedCategory?: FindingCategory): SpecialistOutput {

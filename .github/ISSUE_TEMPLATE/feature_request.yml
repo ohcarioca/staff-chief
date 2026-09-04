@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a focused improvement that preserves the local-first product boundary.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user need without prescribing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should the user be able to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or smaller approaches.
+  - type: dropdown
+    id: data_boundary
+    attributes:
+      label: Does this change the data or network boundary?
+      options:
+        - "No"
+        - "Yes: local data model"
+        - "Yes: AI context or external request"
+        - "Unsure"
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Security and privacy considerations
+      description: Explain new data, permissions, external services, or automatic behavior.
+    validations:
+      required: true

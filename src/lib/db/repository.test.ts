@@ -23,30 +23,30 @@ afterAll(() => {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 });
 
-describe("base local de conhecimento", () => {
-  it("normaliza nomes sem diferenciar acentos e maiúsculas", () => {
+describe("local knowledge base", () => {
+  it("normalizes names without distinguishing accents or letter case", () => {
     expect(normalizeName("  LÉONARDO  ")).toBe("leonardo");
   });
 
-  it("extrai texto pesquisável de um documento TipTap", () => {
-    expect(textFromDocument({ type: "doc", content: [{ type: "paragraph", content: [{ text: "Reunião com " }, { type: "mention", attrs: { label: "Leonardo" } }] }] })).toBe("Reunião com @Leonardo");
+  it("extracts searchable text from a TipTap document", () => {
+    expect(textFromDocument({ type: "doc", content: [{ type: "paragraph", content: [{ text: "Meeting with " }, { type: "mention", attrs: { label: "Leonardo" } }] }] })).toBe("Meeting with @Leonardo");
   });
 
-  it("cria um objeto pela menção e o reutiliza sem duplicar", () => {
+  it("creates an object from a mention and reuses it without duplication", () => {
     const document = (label: string) => ({
-      type: "doc", content: [{ type: "paragraph", content: [{ text: "Conversei com " }, {
-        type: "mention", attrs: { id: `new:${crypto.randomUUID()}`, label, typeId: "type-person", typeLabel: "Pessoa", color: "#45A886", isNew: true },
+      type: "doc", content: [{ type: "paragraph", content: [{ text: "Spoke with " }, {
+        type: "mention", attrs: { id: `new:${crypto.randomUUID()}`, label, typeId: "type-person", typeLabel: "Person", color: "#45A886", isNew: true },
       }] }],
     });
-    const first = saveNote({ title: "Primeira", contentJson: document("Leonardo") });
-    const second = saveNote({ title: "Segunda", contentJson: document("LEONARDO") });
+    const first = saveNote({ title: "First", contentJson: document("Leonardo") });
+    const second = saveNote({ title: "Second", contentJson: document("LEONARDO") });
     const state = getAppState();
     expect(state.objects).toHaveLength(1);
     expect(first.mentions[0].id).toBe(second.mentions[0].id);
     expect(getAppState("Leonardo").notes).toHaveLength(2);
   });
 
-  it("monta um subgrafo de uma nota e suas conexões diretas", () => {
+  it("builds a subgraph from a note and its direct connections", () => {
     const state = getAppState();
     const snapshot = buildAnalysisSnapshot("note", state.notes[0].id);
     expect(snapshot.notes).toHaveLength(2);
@@ -54,7 +54,7 @@ describe("base local de conhecimento", () => {
     expect(snapshot.scope.type).toBe("note");
   });
 
-  it("exporta e restaura uma base versionada criando cópia de segurança", () => {
+  it("exports and restores a versioned database with a safety copy", () => {
     const backup = exportBackup();
     const safetyPath = restoreBackup(backup);
     expect(backup.version).toBe(1);
@@ -62,17 +62,24 @@ describe("base local de conhecimento", () => {
     expect(getAppState().notes).toHaveLength(2);
   });
 
-  it("mantém o snapshot imutável e registra estados parciais da análise", () => {
+  it("rejects unexpected backup columns before executing restore SQL", () => {
+    const backup = structuredClone(exportBackup());
+    backup.tables.notes[0].unexpected_column = "unsafe";
+    expect(() => restoreBackup(backup)).toThrow("colunas inesperadas");
+    expect(getAppState().notes).toHaveLength(2);
+  });
+
+  it("keeps the snapshot immutable and records partial analysis states", () => {
     const snapshot = buildAnalysisSnapshot("note", getAppState().notes[0].id);
     const runId = createAnalysisRun(snapshot);
     updateStep(runId, "connections", "completed", { output: { summary: "ok", findings: [] } });
-    updateStep(runId, "risks", "failed", { error: "falha simulada" });
+    updateStep(runId, "risks", "failed", { error: "simulated failure" });
     replaceFindings(runId, [{
-      category: "follow_up", title: "Retomar conversa", explanation: "A nota pede acompanhamento.",
-      priority: "medium", confidence: 70, suggestedAction: "Agendar conversa",
+      category: "follow_up", title: "Resume conversation", explanation: "The note needs follow-up.",
+      priority: "medium", confidence: 70, suggestedAction: "Schedule a conversation",
       sourceNoteIds: [snapshot.notes[0].id], sourceObjectIds: [snapshot.objects[0].id],
     }]);
-    updateRun(runId, "partial", "1 etapa não concluída.");
+    updateRun(runId, "partial", "1 step did not complete.");
     const run = getAnalysisRun(runId);
     expect(run?.status).toBe("partial");
     expect(run?.steps?.find((step) => step.name === "risks")?.status).toBe("failed");
@@ -80,18 +87,18 @@ describe("base local de conhecimento", () => {
     expect(getRunSnapshot(runId)).toEqual(snapshot);
   });
 
-  it("cria somente os especialistas escolhidos e a consolidação", () => {
+  it("creates only the selected specialists and consolidation", () => {
     const snapshot = buildAnalysisSnapshot("note", getAppState().notes[0].id);
     const runId = createAnalysisRun(snapshot, ["risks", "gaps"]);
     expect(getAnalysisRun(runId)?.steps?.map((step) => step.name)).toEqual(["risks", "gaps", "consolidation"]);
   });
 
-  it("arquiva notas, objetos e tipos sem removê-los do backup", () => {
-    const typeId = createObjectType({ name: "Área", icon: "A", color: "#336699" });
+  it("archives notes, objects, and types without removing them from the backup", () => {
+    const typeId = createObjectType({ name: "Department", icon: "D", color: "#336699" });
     const note = saveNote({
-      title: "Área Financeira",
+      title: "Finance Department",
       contentJson: { type: "doc", content: [{ type: "paragraph", content: [{
-        type: "mention", attrs: { id: "new:area", label: "Financeiro", typeId, typeLabel: "Área", color: "#336699", isNew: true },
+        type: "mention", attrs: { id: "new:department", label: "Finance", typeId, typeLabel: "Department", color: "#336699", isNew: true },
       }] }] },
     });
     const objectId = note.mentions[0].id;

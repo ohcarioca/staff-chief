@@ -1,7 +1,19 @@
 {
   "name": "staff-chief",
   "version": "0.1.0",
+  "description": "A local-first management knowledge base with structured notes, a knowledge graph, and deliberate Codex-assisted analysis.",
   "private": true,
+  "homepage": "https://github.com/ohcarioca/staff-chief#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ohcarioca/staff-chief.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ohcarioca/staff-chief/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3000",
     "build": "next build",

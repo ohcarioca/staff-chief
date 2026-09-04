@@ -9,8 +9,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("prévia da análise", () => {
-  it("pode ser desmontada durante o carregamento sem abortar o fetch", () => {
+describe("analysis preview", () => {
+  it("can unmount while loading without aborting the fetch request", () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       void input;
       void init;

@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible Staff Chief defect without including sensitive data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Never attach a database, backup, credentials, note content, or company data. Follow SECURITY.md for vulnerabilities.
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start the app with a disposable data directory
+        2. Open ...
+        3. Select ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version
+      description: Output of `git rev-parse --short HEAD`, or a release version.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows, Node.js, pnpm, and browser versions.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove usernames, paths, note content, credentials, and company information.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I used disposable or sanitized data to reproduce this issue.
+          required: true
+        - label: This report contains no secrets, personal notes, databases, backups, or company information.
+          required: true
+        - label: This is not a vulnerability report requiring private disclosure.
+          required: true
