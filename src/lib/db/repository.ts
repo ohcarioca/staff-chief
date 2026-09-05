@@ -552,9 +552,10 @@ export function updateFinding(findingId: string, status: FindingStatus) {
   getDatabase().sqlite.prepare("UPDATE findings SET status = ? WHERE id = ?").run(status, findingId);
 }
 
-export function acceptFinding(findingId: string) {
+export function acceptFinding(findingId: string, expectedObjectIds?: [string, string]) {
   const finding = mapFinding(getDatabase().sqlite.prepare("SELECT * FROM findings WHERE id = ?").get(findingId) as Row);
   if (finding.category !== "connection" || finding.sourceObjectIds.length < 2) throw new Error("Este achado não contém dois objetos para relacionar.");
+  if (expectedObjectIds && expectedObjectIds.some((id, index) => id !== finding.sourceObjectIds[index])) throw new Error("Os objetos desta sugestão mudaram. Feche e abra os detalhes para conferir o vínculo novamente.");
   const relationId = createRelationship({
     sourceObjectId: finding.sourceObjectIds[0], targetObjectId: finding.sourceObjectIds[1],
     label: finding.title, origin: "analysis", findingId,

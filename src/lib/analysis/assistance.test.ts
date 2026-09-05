@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabaseForTests } from "../db/client";
 import { getAiRecord } from "../db/ai-store";
-import { createAnalysisRun, exportBackup, getAnalysisRun, getAppState, listFindings, restoreBackup, saveMacroReport, saveNote, updateFinding } from "../db/repository";
+import { acceptFinding, createAnalysisRun, exportBackup, getAnalysisRun, getAppState, listFindings, restoreBackup, saveMacroReport, saveNote, updateFinding } from "../db/repository";
 import { confirmMacro, executePayload, getPrepared, prepareDeepen, prepareDraft, prepareMacro, validateAssistance } from "./assistance";
 import { CodexCliProvider } from "./codex-provider";
 import { containsName, diverseNotes, nameRange, preservesCriticalValues } from "./context";
@@ -16,6 +16,50 @@ const note = (title: string, text: string) => saveNote({ title, contentJson: { t
 const empty = { changes: [], objects: [], findings: [] };
 
 describe("efficient assistance", () => {
+  it("does not add excluded notes back into an explicitly selected note scope", () => {
+    const first = note("Entrega", "Ana coordena a entrega do projeto.");
+    note("Contexto extra", "Ana coordena a entrega do projeto amanhã.");
+    const prepared = prepareMacro({ scopeType: "note", scopeId: first.id, selectedNoteIds: [first.id] });
+    expect(prepared.notes.map((n) => n.id)).toEqual([first.id]);
+    expect(confirmMacro(prepared.prepared!.previewId, [first.id]).notes.map((n) => n.id)).toEqual([first.id]);
+  });
+  it("prepares a different immutable preview after selection changes and passes concise writing rules to macro and deepen", async () => {
+    const first = note("Critério de ativação", "Produto e Growth usam critérios diferentes.");
+    const second = note("Meta", "A meta depende da definição de ativação.");
+    const original = prepareMacro({ scopeType: "collection", scopeId: "selection", selectedNoteIds: [first.id, second.id], analysisTypes: ["risks"] });
+    const revised = prepareMacro({ scopeType: "collection", scopeId: "selection", selectedNoteIds: [first.id], analysisTypes: ["risks"] });
+    expect(revised.prepared!.previewId).not.toBe(original.prepared!.previewId);
+    expect(getPrepared(original.prepared!.previewId, "macro").snapshot.notes).toHaveLength(2);
+    const result = { category: "risk" as const, title: "Produto e Growth medem ativação de formas diferentes", explanation: "As notas usam dois critérios. Comparar os resultados pode distorcer a leitura.", priority: "high" as const, suggestedAction: "Definir o critério de ativação usado no relatório.", sourceObjectIds: [], detail: { evidence: [{ noteId: first.id, quote: first.contentText }], impact: "A medição pode ficar inconsistente.", limitation: "Não sabemos qual critério foi aprovado.", priorityReason: "A meta depende desta definição.", evidenceStrength: "supported" as const, previousFindingId: null } };
+    const provider = new CodexCliProvider();
+    const execute = vi.spyOn(provider, "runStructured").mockResolvedValue({ ...empty, findings: [result] });
+    const output = await executePayload(getPrepared(revised.prepared!.previewId, "macro"), new AbortController().signal, provider);
+    expect(output.findings[0].suggestedAction).toBe(result.suggestedAction);
+    expect(output.findings[0].detail?.evidence[0].quote).toBe(first.contentText);
+    const run = createAnalysisRun(confirmMacro(revised.prepared!.previewId, [first.id]));
+    saveMacroReport(run, output.findings);
+    const deepen = prepareDeepen(getAnalysisRun(run)!.findings![0].id, run);
+    await executePayload(getPrepared(deepen.previewId, "deepen"), new AbortController().signal, provider);
+    for (const [prompt] of execute.mock.calls) {
+      expect(prompt).toContain("ONE concrete next step beginning with a verb");
+      expect(prompt).toContain("at most 90 characters");
+      expect(prompt).toContain("assistance-v2-clear-findings");
+    }
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+  it("rejects acceptance when the previewed pair no longer matches the current finding", () => {
+    const source = saveNote({ title: "Projetos", contentJson: { type: "doc", content: [{ type: "paragraph", content: ["A", "B", "C"].map((label) => ({ type: "mention", attrs: { id: `new:${label}`, label, typeId: "type-project", isNew: true } })) }] } });
+    const prepared = prepareMacro({ scopeType: "note", scopeId: source.id });
+    const run = createAnalysisRun(confirmMacro(prepared.prepared!.previewId, [source.id]));
+    saveMacroReport(run, [{ category: "connection", title: "Projetos conectados", explanation: "Conexão", priority: "medium", confidence: 0, suggestedAction: "Conferir a dependência.", sourceNoteIds: [source.id], sourceObjectIds: source.mentions.map((o) => o.id) }]);
+    const current = listFindings()[0];
+    expect(() => acceptFinding(current.id, ["outdated", "pair"])).toThrow("mudaram");
+    expect(getAppState().relationships).toHaveLength(0);
+    expect(listFindings()[0].status).toBe("open");
+    const pair: [string, string] = [current.sourceObjectIds[0], current.sourceObjectIds[1]];
+    acceptFinding(current.id, pair);
+    expect(getAppState().relationships[0]).toMatchObject({ sourceObjectId: pair[0], targetObjectId: pair[1] });
+  });
   it("prepares drafts locally without invoking the provider", () => {
     const run = vi.spyOn(CodexCliProvider.prototype, "runStructured");
     const preview = prepareDraft("improve", [{ id: "b", text: "Ana confirmou entrega em 15/10.", protected: false }], "Entrega");

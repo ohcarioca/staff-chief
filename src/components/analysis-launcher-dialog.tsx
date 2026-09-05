@@ -3,44 +3,40 @@
 import { ArrowRight, CalendarDays, Check, Lightbulb, ListChecks, SearchCheck, ShieldAlert, Sparkles, Unplug, X } from "lucide-react";
 import { useState } from "react";
 import type { AnalysisDateRange, AnalysisScope, AnalysisType, NoteRecord } from "@/lib/contracts";
+import { AnalysisProgress, periodLabel, useAnalysisDialog } from "./analysis-ui";
 
 type CollectionMode = "general" | "selection";
 
 const analysisOptions: Array<{ id: AnalysisType; label: string; description: string; icon: typeof Sparkles }> = [
-  { id: "connections", label: "Conexões e oportunidades", description: "Encontra relações, padrões e sinergias entre seus registros.", icon: Lightbulb },
+  { id: "connections", label: "Conexões e oportunidades", description: "O que pode ser conectado ou reaproveitado entre seus projetos?", icon: Lightbulb },
   { id: "risks", label: "Riscos", description: "Aponta dependências frágeis, atrasos e sinais de atenção.", icon: ShieldAlert },
   { id: "contradictions", label: "Contradições", description: "Compara informações incompatíveis e mudanças de direção.", icon: Unplug },
   { id: "gaps", label: "Lacunas", description: "Identifica contexto, responsáveis, critérios ou decisões ausentes.", icon: SearchCheck },
-  { id: "follow_ups", label: "Follow-ups", description: "Sugere próximos passos objetivos sustentados pelas notas.", icon: ListChecks },
+  { id: "follow_ups", label: "Próximos passos", description: "O que precisa de uma ação ou acompanhamento?", icon: ListChecks },
 ];
 
 interface AnalysisLauncherDialogProps {
   notes: NoteRecord[];
   dateRange: AnalysisDateRange;
-  onContinue(scope: AnalysisScope, analysisTypes: AnalysisType[], noteIds: string[], dateRange: AnalysisDateRange): void;
+  scope?: AnalysisScope;
+  scopeLabel?: string;
+  initialNoteIds?: string[];
+  initialTypes?: AnalysisType[];
+  initialMode?: "full" | "incremental";
+  onContinue(scope: AnalysisScope, analysisTypes: AnalysisType[], noteIds: string[], dateRange: AnalysisDateRange, mode: "full" | "incremental"): void;
   onClose(): void;
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
-    .format(new Date(`${value}T00:00:00Z`));
-}
-
-function dateRangeLabel(dateRange: AnalysisDateRange) {
-  if (dateRange.start && dateRange.end) return `${formatDate(dateRange.start)} a ${formatDate(dateRange.end)}`;
-  if (dateRange.start) return `Desde ${formatDate(dateRange.start)}`;
-  if (dateRange.end) return `Até ${formatDate(dateRange.end)}`;
-  return "Todo o histórico";
 }
 
 function noteLabel(note: NoteRecord) {
   return note.title || note.contentText.slice(0, 70) || "Nota sem título";
 }
 
-export function AnalysisLauncherDialog({ notes, dateRange, onContinue, onClose }: AnalysisLauncherDialogProps) {
-  const [mode, setMode] = useState<CollectionMode>("general");
-  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(() => new Set(notes.slice(0, 50).map((note) => note.id)));
-  const [selectedTypes, setSelectedTypes] = useState<Set<AnalysisType>>(() => new Set(["connections"]));
+export function AnalysisLauncherDialog({ notes, dateRange, scope, scopeLabel, initialNoteIds, initialTypes, initialMode, onContinue, onClose }: AnalysisLauncherDialogProps) {
+  const dialogRef = useAnalysisDialog(onClose);
+  const [mode, setMode] = useState<CollectionMode>(scope?.type === "collection" && scope.id === "general" ? "general" : initialNoteIds ? "selection" : "general");
+  const [reviewMode, setReviewMode] = useState<"full" | "incremental">(initialMode ?? "full");
+  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(() => new Set(initialNoteIds ?? notes.slice(0, 50).map((note) => note.id)));
+  const [selectedTypes, setSelectedTypes] = useState<Set<AnalysisType>>(() => new Set(initialTypes ?? ["connections"]));
   const allTypesSelected = selectedTypes.size === analysisOptions.length;
   const activeNoteIds = mode === "general" ? notes.map((note) => note.id) : [...selectedNotes];
   const selectionIsValid = activeNoteIds.length > 0 && activeNoteIds.length <= 50;
@@ -68,27 +64,28 @@ export function AnalysisLauncherDialog({ notes, dateRange, onContinue, onClose }
   };
 
   return <div className="dialog-backdrop" role="presentation">
-    <section className="analysis-dialog analysis-launcher" role="dialog" aria-modal="true" aria-labelledby="analysis-launcher-title">
+    <section ref={dialogRef} tabIndex={-1} className="analysis-dialog analysis-launcher" role="dialog" aria-modal="true" aria-labelledby="analysis-launcher-title">
       <header className="dialog-header">
         <div className="dialog-title-mark"><Sparkles size={18} /></div>
-        <div><span className="eyebrow">Codex · execução manual</span><h2 id="analysis-launcher-title">Configurar análise IA</h2></div>
+        <div><span className="eyebrow">Análise das suas notas</span><h2 id="analysis-launcher-title">Configurar análise IA</h2></div>
         <button className="icon-button dialog-close" onClick={onClose} aria-label="Fechar"><X size={18} /></button>
       </header>
       <div className="dialog-body launcher-body">
+        <AnalysisProgress current={0} />
         <section className="launcher-section">
-          <div className="launcher-section-heading"><div><span className="launcher-step">1</span><strong>Defina o conjunto de notas</strong></div><small>O calendário do dashboard delimita o período.</small></div>
+          <div className="launcher-section-heading"><strong>Quais notas você quer analisar?</strong></div>
           <div className="analysis-period-card">
             <CalendarDays size={17} />
-            <span><small>Filtro do calendário</small><strong>{dateRangeLabel(dateRange)}</strong></span>
+            <span><small>{scopeLabel ? "Notas relacionadas a" : "Período do dashboard"}</small><strong>{scopeLabel || periodLabel(dateRange)}</strong></span>
             <b>{notes.length} nota{notes.length === 1 ? "" : "s"}</b>
           </div>
           <div className="scope-tabs" role="tablist" aria-label="Conjunto de notas">
-            <button role="tab" aria-selected={mode === "general"} className={mode === "general" ? "is-active" : ""} onClick={() => setMode("general")}>Todas no período <span>{notes.length}</span></button>
+            <button role="tab" aria-selected={mode === "general"} className={mode === "general" ? "is-active" : ""} onClick={() => setMode("general")}>{scopeLabel ? "Todas relacionadas" : "Todas no período"} <span>{notes.length}</span></button>
             <button role="tab" aria-selected={mode === "selection"} className={mode === "selection" ? "is-active" : ""} onClick={() => setMode("selection")}>Selecionar notas <span>{selectedNotes.size}</span></button>
           </div>
           {mode === "general" ? <div className={`collection-summary ${selectionIsValid ? "" : "has-warning"}`}>
-            <strong>{notes.length ? `A análise cruzará ${notes.length} nota${notes.length === 1 ? "" : "s"}.` : "Nenhuma nota encontrada neste período."}</strong>
-            <small>{notes.length > 50 ? "O limite é de 50 notas. Reduza o período no calendário ou use a seleção manual." : "Todas as notas exibidas pelo filtro serão revisadas juntas."}</small>
+            <strong>{notes.length ? `${notes.length} nota${notes.length === 1 ? "" : "s"} para preparar a análise.` : "Nenhuma nota encontrada."}</strong>
+            <small>{notes.length > 50 ? "O limite é de 50 notas. Reduza o período no calendário ou use a seleção manual." : "Na próxima etapa, confira os trechos que serão incluídos. A preparação pode selecionar um conjunto menor."}</small>
           </div> : <>
             <div className="launcher-note-actions"><span>{selectedNotes.size}/50 selecionadas</span><button type="button" onClick={toggleAllNotes}>{selectedNotes.size ? "Limpar seleção" : "Selecionar até 50"}</button></div>
             <div className="launcher-note-list">
@@ -103,7 +100,7 @@ export function AnalysisLauncherDialog({ notes, dateRange, onContinue, onClose }
           </>}
         </section>
         <section className="launcher-section">
-          <div className="launcher-section-heading"><div><span className="launcher-step">2</span><strong>Selecione as lentes de análise</strong></div><button className="select-all-analysis" onClick={toggleAllAnalysisTypes}>{allTypesSelected ? "Desmarcar todas" : "Selecionar todas"}</button></div>
+          <div className="launcher-section-heading"><strong>O que você quer descobrir?</strong><button className="select-all-analysis" onClick={toggleAllAnalysisTypes}>{allTypesSelected ? "Desmarcar todas" : "Selecionar todas"}</button></div>
           <div className="analysis-type-grid">{analysisOptions.map(({ id, label, description, icon: Icon }) => {
             const checked = selectedTypes.has(id);
             return <button key={id} className={`analysis-type-card ${checked ? "is-selected" : ""}`} onClick={() => toggleAnalysisType(id)} aria-pressed={checked}>
@@ -111,9 +108,10 @@ export function AnalysisLauncherDialog({ notes, dateRange, onContinue, onClose }
             </button>;
           })}</div>
         </section>
+        <details className="analysis-advanced" open={reviewMode === "incremental" ? true : undefined}><summary>Opções avançadas</summary><label>Modo de revisão <select value={reviewMode} onChange={(event) => setReviewMode(event.target.value as "full" | "incremental")}><option value="full">Revisão completa</option><option value="incremental">Somente alterações e histórico relacionado</option></select></label><p>A revisão completa considera as notas selecionadas. A revisão por alterações foca nas notas modificadas desde a última análise e inclui histórico relacionado.</p></details>
         <div className="launcher-privacy"><ShieldAlert size={15} /><span>Nenhum dado será enviado até você revisar todas as notas incluídas e confirmar na próxima etapa.</span></div>
       </div>
-      <footer className="dialog-footer"><button className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!selectionIsValid || selectedTypes.size === 0} onClick={() => onContinue({ type: "collection", id: mode }, analysisOptions.map((option) => option.id).filter((type) => selectedTypes.has(type)), activeNoteIds, dateRange)}><span>Revisar contexto</span><ArrowRight size={15} /></button></footer>
+      <footer className="dialog-footer"><button className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!selectionIsValid || selectedTypes.size === 0} onClick={() => onContinue(scope && scope.type !== "collection" ? scope : { type: "collection", id: mode }, analysisOptions.map((option) => option.id).filter((type) => selectedTypes.has(type)), activeNoteIds, dateRange, reviewMode)}><span>Conferir envio</span><ArrowRight size={15} /></button></footer>
     </section>
   </div>;
 }

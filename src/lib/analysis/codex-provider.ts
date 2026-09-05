@@ -1,4 +1,5 @@
 import "server-only";
+import { findingWritingInstructions } from "./finding-writing";
 
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -78,7 +79,8 @@ function buildPrompt(step: SpecialistName, snapshot: AnalysisSnapshot, previousO
   const rules = `You are part of a personal management knowledge system. Analyze only the supplied data.
 Do not use tools, read files, or browse the web. Do not invent facts.
 Every conclusion must cite at least one existing ID in sourceNoteIds or sourceObjectIds.
-Write all user-facing content in Brazilian Portuguese, be direct, and return only the requested JSON.`;
+Write all user-facing content in Brazilian Portuguese, be direct, and return only the requested JSON.
+${findingWritingInstructions}`;
   if (step === "consolidation") {
     return `${rules}\n\nTask: consolidate the specialist results. Remove duplicates, preserve relevant disagreements, and keep at most 20 priority findings. Do not create new sources.\n\nDATA:\n${JSON.stringify({ snapshot, specialistOutputs: previousOutputs })}`;
   }

@@ -178,6 +178,10 @@ Aborts an analysis process that is active in the current server process.
 
 Retries the failed macro step, or failed specialists and consolidation for legacy runs. Returns status `202`. It rejects runs that do not exist or contain no failed step.
 
+### `GET /api/findings/:id`
+
+Returns the current canonical `FindingRecord` without caching, or `404` when unavailable. The UI uses its first two `sourceObjectIds` to preview the actual relationship pair, since an immutable historical report may contain different sources.
+
 ### `POST /api/findings/:id`
 
 Changes a finding status:
@@ -199,7 +203,7 @@ To accept a supported connection and create a confirmed relationship:
 }
 ```
 
-Acceptance requires a connection finding with at least two valid object sources.
+Acceptance requires a connection finding with at least two valid object sources. The UI also sends optional `expectedObjectIds: [sourceId, targetId]` from the current finding preview. If that ordered pair has changed, acceptance fails before creating a relationship and the user must review the pair again. Existing clients omitting this field remain compatible.
 
 ## Backup
 

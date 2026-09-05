@@ -6,7 +6,7 @@ Staff Chief uses the locally installed Codex CLI as an explicit, user-initiated 
 
 New runs use one `macro` step, without specialist fan-out or consolidation. The default lens is connections; users can enable the other lenses in the same call. Legacy reports remain readable and legacy failed steps can still be retried manually.
 
-Local ranking combines text terms, existing objects, confirmed relationships and a reserved portion of candidates from other projects. The preview shows up to 20 notes as excerpts, their dates, object context and relevant historical finding titles/statuses. It does not promise exhaustive coverage. Collection candidates remain within the selected calendar-constrained set; note/object scopes may offer additional relevant notes as bridges. Users can remove candidates. No embeddings or AI-generated indexing summaries are used.
+Local ranking combines text terms, existing objects, confirmed relationships and a reserved portion of candidates from other projects. The preview shows up to 20 notes as excerpts, their dates, object context and relevant historical finding titles/statuses. It does not promise exhaustive coverage. Explicit note selections constrain preparation for every scope, so excluded notes are not added back. The UI selects candidates during configuration and returns there to edit before preparing a fresh preview. API callers that omit selection for note/object scopes can still discover additional relevant bridges. No embeddings or AI-generated indexing summaries are used.
 
 The server freezes previews for 30 minutes. Execution requires the returned preview ID and accepts only a subset of reviewed sources. Oversized contexts are rejected before starting the executor. Internal byte limits protect each operation from sending an unnecessarily broad context; they are implementation safeguards and are not shown as token or cost estimates.
 
@@ -18,7 +18,9 @@ Each current finding has literal evidence quotes, impact, limitations, a priorit
 
 Existing object-name suggestions run locally while typing. `Melhorar` prepares the selected text or current draft, then requires confirmation for one call. Results contain up to five block changes and five object suggestions. Protected blocks containing mentions or rich marks are not rewritten. Number changes are rejected; semantic changes still require user review. Accepted edits remain unsaved and can be undone. A changed draft invalidates pending suggestions.
 
-`Buscar conexoes` is separate: it selects at most five related notes, shows their excerpts before confirmation, and returns at most three connections. `Aprofundar` uses preserved finding sources for one optional call and returns at most one expanded finding. Neither operation confirms relationships automatically.
+`Buscar conexoes` is separate: it selects at most five related notes, shows their excerpts before confirmation, and returns at most three connections. **Pedir mais detalhes** uses preserved finding sources for one optional call and returns at most one expanded finding. Neither operation confirms relationships automatically.
+
+Macro, deepening and the executable legacy pipeline share editorial instructions: a direct title (target 90 characters), at most two explanation sentences, one impact sentence and one concrete next action starting with a verb. These are generation guidelines, not new schema limits. Historical text remains unchanged. Policy version `assistance-v2-clear-findings` separates the new prompts from earlier cached answers.
 
 Identical requests reuse a bounded server-session cache keyed by content, source versions, operation and configuration. Concurrent duplicate requests are rejected. Failed requests are not automatically retried. The product does not calculate or display token consumption; efficiency comes from local retrieval, compact excerpts, one macro call, incremental review and optional deepening.
 
@@ -49,7 +51,7 @@ The preview shows:
 - every candidate note;
 - the objects and confirmed relationships derived from those notes.
 
-The user can remove notes from the snapshot. A maximum of 50 notes can be submitted. Codex starts only after the user activates the final confirmation control.
+The user can return to configuration to remove notes and prepare a new snapshot. A maximum of 50 candidate notes can be submitted. Codex starts only after the user activates the final confirmation control, which sends the exact included note IDs with the frozen preview ID. Oversized previews disable confirmation.
 
 Unsaved editor content is not part of a snapshot. Save a note before analyzing it.
 

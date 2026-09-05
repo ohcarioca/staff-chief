@@ -9,6 +9,7 @@ import {
 import type { AnalysisDateRange, AnalysisScope, AnalysisType, AppState, FindingRecord, KnowledgeObjectRecord, NoteRecord, ViewName } from "@/lib/contracts";
 import { AnalysisDialog } from "./analysis-dialog";
 import { AnalysisLauncherDialog } from "./analysis-launcher-dialog";
+import { priorityLabels, priorityOrder, runStatusLabels } from "./analysis-ui";
 
 const KnowledgeMap = dynamic(() => import("./knowledge-map").then((module) => module.KnowledgeMap), {
   loading: () => <div className="loading-row">Carregando mapa…</div>,
@@ -24,7 +25,7 @@ const viewTitles: Record<ViewName, { title: string; subtitle: string }> = {
   notes: { title: "Notas", subtitle: "Sua memória gerencial, conectada" },
   objects: { title: "Objetos", subtitle: "Conhecimento organizado por tipo" },
 };
-const categoryLabels: Record<string, string> = { connection: "Conexão", risk: "Risco", contradiction: "Contradição", gap: "Lacuna", follow_up: "Follow-up" };
+const categoryLabels: Record<string, string> = { connection: "Conexão", risk: "Risco", contradiction: "Contradição", gap: "Lacuna", follow_up: "Próximo passo" };
 
 type DateRange = AnalysisDateRange;
 
@@ -74,7 +75,7 @@ function Dashboard({ state, dateRange, onOpenRun, onNewNote, onGoToNotes, onComp
     { label: "Notas ativas", value: noteCount, icon: FileText, tone: "green" },
     { label: "Objetos", value: objectCount, icon: CircleDot, tone: "violet" },
     { label: "Achados abertos", value: isAllTime ? state.metrics.openFindings : filteredFindings.length, icon: Sparkles, tone: "gold" },
-    { label: "Follow-ups", value: isAllTime ? state.metrics.pendingFollowUps : filteredFindings.filter((finding) => finding.category === "follow_up").length, icon: ArrowUpRight, tone: "coral" },
+    { label: "Próximos passos", value: isAllTime ? state.metrics.pendingFollowUps : filteredFindings.filter((finding) => finding.category === "follow_up").length, icon: ArrowUpRight, tone: "coral" },
     { label: "Sem vínculos", value: unlinkedNotes, icon: Link2, tone: "stone" },
   ];
   const health = noteCount ? Math.round(((noteCount - unlinkedNotes) / noteCount) * 100) : 0;
@@ -87,7 +88,7 @@ function Dashboard({ state, dateRange, onOpenRun, onNewNote, onGoToNotes, onComp
     </section>
     <section className="dashboard-section activity-section">
       <div className="section-heading"><div><span className="eyebrow">Atividade</span><h2>Análises recentes</h2></div></div>
-      {filteredRuns.length ? <div className="run-table">{filteredRuns.map((run) => <button key={run.id} onClick={() => onOpenRun(run.id)}><span className={`run-dot run-dot-${run.status}`} /><span><strong>{analysisRunLabel(run.scopeType)}</strong><small>{relativeDate(run.createdAt)} · Codex</small></span><span className="run-status">{run.status === "completed" ? "Concluída" : run.status === "partial" ? "Parcial" : run.status === "running" ? "Em curso" : run.status}</span><ArrowUpRight size={15} /></button>)}</div>
+      {filteredRuns.length ? <div className="run-table">{filteredRuns.map((run) => <button key={run.id} onClick={() => onOpenRun(run.id)}><span className={`run-dot run-dot-${run.status}`} /><span><strong>{analysisRunLabel(run.scopeType)}</strong><small>{relativeDate(run.createdAt)} · Codex</small></span><span className="run-status">{runStatusLabels[run.status]}</span><ArrowUpRight size={15} /></button>)}</div>
         : <div className="soft-empty"><div className="soft-empty-mark"><BrainCircuit size={23} /></div><div><strong>Ainda não há análises</strong><p>Crie uma nota conectada e peça ao Codex para olhar além do óbvio.</p></div><button className="secondary-button" onClick={state.notes.length ? onGoToNotes : onNewNote}>{state.notes.length ? "Ver notas" : "Criar primeira nota"}</button></div>}
     </section>
     <div className="dashboard-composer">
@@ -146,8 +147,8 @@ function DateFilter({ value, onChange }: { value: DateRange; onChange(value: Dat
 }
 
 function FindingSummary({ findings, onOpenFinding, onAnalyze }: { findings: FindingRecord[]; onOpenFinding(runId: string, findingId: string): void; onAnalyze(): void }) {
-  return <section className="finding-summary"><header className="inspector-title"><span className="eyebrow">Prioridades</span><div className="inspector-title-row"><h2>Achados abertos</h2><button className="ai-analysis-button" onClick={onAnalyze}><Sparkles size={14} /> Análise IA</button></div><p>Sinais encontrados somente nas análises que você iniciou.</p></header>
-    <div className="compact-findings">{findings.length ? findings.map((finding) => <button key={finding.id} onClick={() => onOpenFinding(finding.runId, finding.id)} className={`compact-finding priority-${finding.priority}`}><span>{categoryLabels[finding.category]}</span><strong>{finding.title}</strong><small>{finding.priority === "high" ? "Prioridade alta" : finding.priority === "medium" ? "Prioridade média" : "Prioridade baixa"} · {finding.detail ? "Fontes verificáveis" : "Relatório legado"}</small></button>) : <div className="empty-inspector compact"><div className="empty-orbit">✓</div><h3>Nada pendente</h3><p>Achados abertos aparecerão aqui.</p></div>}</div>
+  return <section className="finding-summary"><header className="inspector-title"><span className="eyebrow">Prioridades</span><div className="inspector-title-row"><h2>Sugestões pendentes</h2><button className="ai-analysis-button" onClick={onAnalyze}><Sparkles size={16} /> Analisar notas</button></div><p>Confira o próximo passo e abra a sugestão para entender o motivo.</p></header>
+    <div className="compact-findings">{findings.length ? [...findings].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]).map((finding) => <button key={finding.id} onClick={() => onOpenFinding(finding.runId, finding.id)} className={`compact-finding priority-${finding.priority}`}><span>{categoryLabels[finding.category]} · {priorityLabels[finding.priority]}</span><strong>{finding.title}</strong><span className="compact-next-step"><b>Próximo passo sugerido</b>{finding.suggestedAction.trim() || "Nenhuma ação específica registrada."}</span><small>Entender esta sugestão →</small></button>) : <div className="empty-inspector compact"><div className="empty-orbit">✓</div><h3>Nada pendente</h3><p>Sugestões das suas análises aparecerão aqui.</p></div>}</div>
   </section>;
 }
 
@@ -206,6 +207,10 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const [analysisDateRange, setAnalysisDateRange] = useState<AnalysisDateRange | undefined>(undefined);
   const [analysisCandidateNotes, setAnalysisCandidateNotes] = useState<NoteRecord[]>([]);
   const [analysisLauncherOpen, setAnalysisLauncherOpen] = useState(false);
+  const [launcherScope, setLauncherScope] = useState<AnalysisScope | undefined>(undefined);
+  const [launcherLabel, setLauncherLabel] = useState<string | undefined>(undefined);
+  const [analysisMode, setAnalysisMode] = useState<"full" | "incremental">("full");
+  const [returnAnalysis, setReturnAnalysis] = useState<{ runId: string; findingId: string } | null>(null);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const [openFindingId, setOpenFindingId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -276,9 +281,10 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     if (view === "dashboard") setComposerDirty(false);
     setSelectedObjectId(objectId); setView("map"); setIsNewNote(false); setEditorDirty(false);
   };
-  const openAnalysisSource = (type: "note" | "object", sourceId: string) => {
+  const openAnalysisSource = (type: "note" | "object", sourceId: string, runId: string, findingId: string) => {
     if (!guardUnsaved()) return;
     if (view === "dashboard") setComposerDirty(false);
+    setReturnAnalysis({ runId, findingId });
     setAnalysisScope(null); setOpenRunId(null); setOpenFindingId(null); setAnalysisTypes(undefined); setAnalysisNoteIds(undefined); setAnalysisDateRange(undefined);
     if (type === "note") {
       setView("notes"); setSelectedNoteId(sourceId); setIsNewNote(false); setEditorDirty(false);
@@ -318,16 +324,29 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     try {
       const fullState = await refresh("");
       setAnalysisCandidateNotes(fullState.notes.filter((note) => isWithinRange(note.updatedAt, dateRange)));
+      setLauncherScope(undefined); setLauncherLabel(undefined); setAnalysisNoteIds(undefined); setAnalysisTypes(undefined); setAnalysisMode("full"); setAnalysisDateRange(dateRange);
       setSearch("");
       setAnalysisLauncherOpen(true);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Não foi possível preparar as notas para análise.");
     }
   };
-  const openScopedAnalysis = (scope: AnalysisScope) => {
-    setAnalysisNoteIds(undefined);
-    setAnalysisDateRange(undefined);
-    setAnalysisScope(scope);
+  const openScopedAnalysis = async (scope: AnalysisScope) => {
+    try {
+      const fullState = await refresh("");
+      const root = fullState.notes.find((note) => note.id === scope.id);
+      const relatedIds = new Set(root?.mentions.map((object) => object.id) ?? [scope.id]);
+      const candidates = fullState.notes.filter((note) => note.id === root?.id || note.mentions.some((object) => relatedIds.has(object.id)));
+      setAnalysisCandidateNotes(candidates);
+      setLauncherScope(scope); setLauncherLabel(root?.title || fullState.objects.find((object) => object.id === scope.id)?.name || "Nota sem título");
+      setAnalysisNoteIds(undefined); setAnalysisTypes(undefined); setAnalysisMode("full"); setAnalysisDateRange({ start: "", end: "" });
+      setSearch(""); setAnalysisLauncherOpen(true);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Não foi possível preparar a análise."); }
+  };
+  const openReport = async (runId: string, findingId: string | null = null) => {
+    try {
+      await refresh(""); setSearch(""); setOpenFindingId(findingId); setOpenRunId(runId); setReturnAnalysis(null);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Não foi possível abrir a análise."); }
   };
   const resizeInspectorBy = (delta: number) => {
     const current = inspectorWidth ?? inspectorRef.current?.getBoundingClientRect().width ?? 390;
@@ -357,7 +376,8 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     <section className="workspace">
       <header className="topbar"><div><span className="eyebrow">{currentViewTitle.subtitle}</span><h1>{currentViewTitle.title}</h1></div><div className="topbar-tools"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === "objects" ? "Buscar objetos…" : "Buscar notas…"} />{search && <button onClick={() => setSearch("")} aria-label="Limpar"><X size={13} /></button>}</label></div></header>
       <div className="center-pane">
-        {view === "dashboard" && <Dashboard state={state} dateRange={dateRange} onOpenRun={(runId) => { setOpenFindingId(null); setOpenRunId(runId); }} onNewNote={newNote} onGoToNotes={() => changeView("notes")} onComposerDirty={setComposerDirty} onComposerSaved={() => { void refresh(); setNotice("Nota adicionada."); }} onSelectObject={selectObject} />}
+        {returnAnalysis && <div className="analysis-return"><span>Consultando uma fonte da análise</span><button className="secondary-button" onClick={() => { if (guardUnsaved()) void openReport(returnAnalysis.runId, returnAnalysis.findingId); }}>Voltar à sugestão</button></div>}
+        {view === "dashboard" && <Dashboard state={state} dateRange={dateRange} onOpenRun={(runId) => void openReport(runId)} onNewNote={newNote} onGoToNotes={() => changeView("notes")} onComposerDirty={setComposerDirty} onComposerSaved={() => { void refresh(); setNotice("Nota adicionada."); }} onSelectObject={selectObject} />}
         {view === "map" && <KnowledgeMap state={state} selectedObjectId={selectedObjectId} onSelectObject={setSelectedObjectId} />}
         {view === "notes" && <NotesList notes={state.notes} selectedId={selectedNoteId} onSelect={selectNote} onNew={newNote} />}
         {view === "objects" && <ObjectsList typeName={selectedType?.name ?? "Objetos"} objects={visibleObjects} notes={state.notes} selectedId={selectedObjectId} onSelect={setSelectedObjectId} />}
@@ -366,14 +386,14 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
 
     <aside className="inspector" ref={inspectorRef}>
       <div className="inspector-resizer" role="separator" aria-label="Redimensionar painel direito" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => { event.currentTarget.focus(); event.preventDefault(); setResizingInspector(true); }} onDoubleClick={() => setInspectorWidth(null)} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); resizeInspectorBy(16); } if (event.key === "ArrowRight") { event.preventDefault(); resizeInspectorBy(-16); } }} />
-      {view === "dashboard" && <div className="inspector-stack dashboard-inspector"><DateFilter value={dateRange} onChange={setDateRange} /><FindingSummary findings={filteredPriorityFindings} onOpenFinding={(runId, findingId) => { setOpenFindingId(findingId); setOpenRunId(runId); }} onAnalyze={() => void openDashboardAnalysis()} /></div>}
+      {view === "dashboard" && <div className="inspector-stack dashboard-inspector"><DateFilter value={dateRange} onChange={setDateRange} /><FindingSummary findings={filteredPriorityFindings} onOpenFinding={(runId, findingId) => void openReport(runId, findingId)} onAnalyze={() => void openDashboardAnalysis()} /></div>}
       {view === "map" && <ObjectInspector key={selectedObject?.id ?? "no-object"} object={selectedObject} state={state} onAnalyze={(id) => openScopedAnalysis({ type: "object", id })} onArchive={(id) => void archive("object", id)} onChanged={() => void refresh()} />}
       {view === "objects" && <ObjectInspector key={selectedObject?.id ?? "no-object"} object={selectedObject} state={state} onAnalyze={(id) => openScopedAnalysis({ type: "object", id })} onArchive={(id) => void archive("object", id)} onChanged={() => void refresh("")} />}
       {view === "notes" && <RichNoteEditor key={isNewNote ? "new-note" : selectedNote?.id ?? "no-note"} note={selectedNote} isNew={isNewNote} objectTypes={state.objectTypes} objects={state.objects} onDirtyChange={setEditorDirty} onSaved={(note) => { setSelectedNoteId(note.id); setIsNewNote(false); setEditorDirty(false); void refresh(); }} onAnalyze={(id) => openScopedAnalysis({ type: "note", id })} onArchive={(id) => void archive("note", id)} onSelectObject={selectObject} />}
     </aside>
 
-    {analysisLauncherOpen && <AnalysisLauncherDialog notes={analysisCandidateNotes} dateRange={dateRange} onClose={() => { setAnalysisLauncherOpen(false); setAnalysisCandidateNotes([]); }} onContinue={(scope, types, noteIds, selectedDateRange) => { setAnalysisLauncherOpen(false); setAnalysisCandidateNotes([]); setAnalysisTypes(types); setAnalysisNoteIds(noteIds); setAnalysisDateRange(selectedDateRange); setAnalysisScope(scope); }} />}
-    {(analysisScope || openRunId) && <AnalysisDialog key={openRunId ? `${openRunId}:${openFindingId ?? "report"}` : `${analysisScope?.type}:${analysisScope?.id}`} scope={analysisScope} existingRunId={openRunId} initialFindingId={openFindingId} initialNoteIds={analysisNoteIds} dateRange={analysisDateRange} analysisTypes={analysisTypes} notes={state.notes} objects={state.objects} onOpenSource={openAnalysisSource} onClose={() => { setAnalysisScope(null); setOpenRunId(null); setOpenFindingId(null); setAnalysisTypes(undefined); setAnalysisNoteIds(undefined); setAnalysisDateRange(undefined); }} onChanged={() => { void refresh(view === "objects" ? "" : search); }} />}
+    {analysisLauncherOpen && <AnalysisLauncherDialog notes={analysisCandidateNotes} dateRange={analysisDateRange ?? dateRange} scope={launcherScope} scopeLabel={launcherLabel} initialNoteIds={analysisNoteIds} initialTypes={analysisTypes} initialMode={analysisMode} onClose={() => { setAnalysisLauncherOpen(false); setAnalysisCandidateNotes([]); }} onContinue={(scope, types, noteIds, selectedDateRange, mode) => { setAnalysisLauncherOpen(false); setLauncherScope(scope); setAnalysisTypes(types); setAnalysisNoteIds(noteIds); setAnalysisDateRange(selectedDateRange); setAnalysisMode(mode); setAnalysisScope(scope); }} />}
+    {(analysisScope || openRunId) && <AnalysisDialog key={openRunId ? `${openRunId}:${openFindingId ?? "report"}` : `${analysisScope?.type}:${analysisScope?.id}`} scope={analysisScope} existingRunId={openRunId} initialFindingId={openFindingId} initialNoteIds={analysisNoteIds} dateRange={analysisDateRange} mode={analysisMode} analysisTypes={analysisTypes} notes={state.notes} objects={state.objects} onOpenSource={openAnalysisSource} onBack={() => { setAnalysisScope(null); setAnalysisLauncherOpen(true); }} onClose={() => { setAnalysisScope(null); setOpenRunId(null); setOpenFindingId(null); setAnalysisTypes(undefined); setAnalysisNoteIds(undefined); setAnalysisDateRange(undefined); }} onChanged={() => { void refresh(view === "objects" ? "" : search); }} />}
     {notice && <div className="toast"><span>{notice}</span><button onClick={() => setNotice("")}><X size={14} /></button></div>}
   </main>;
 }

@@ -28,7 +28,7 @@ The dashboard summarizes:
 
 Use the calendar controls in the inspector to select all time, today, the last 7 days, the last 30 days, or a custom date range. The priority section and dashboard AI analysis follow the same filter.
 
-Select **Análise IA** in the priority header to analyze all notes updated during the active period or choose a manual subset. The launcher displays the applied period and note count before preparing the local preview. A maximum of 50 notes can be analyzed at once; narrow the calendar period or use manual selection when the period contains more.
+Select **Analisar notas** in the priority header to analyze all notes updated during the active period or choose a manual subset. The flow is **Configurar → Conferir envio → Analisar → Resultados**. Select up to 50 candidate notes, then review the actual excerpts included by local preparation (up to 20 notes). Use **Voltar e editar** to change your choices and prepare a fresh preview. Only **Confirmar e analisar** sends content to Codex.
 
 The complete editor at the bottom of the dashboard creates a new note without leaving the overview.
 
@@ -95,9 +95,13 @@ Analysis can start from three scopes:
 
 Available actions are:
 
-- **Resolve:** mark the finding as handled.
-- **Dismiss:** retain it in history but remove it from open priorities.
-- **Accept relationship:** for supported connection findings with at least two object sources, create a confirmed relationship and resolve the finding.
+- **Marcar como resolvido:** update tracking only; the recommended action remains yours to perform.
+- **Descartar sugestão:** retain it in history but remove it from open priorities.
+- **Criar vínculo no mapa:** review the displayed pair of objects, then create that relationship and resolve the finding.
+
+The report shows pending suggestions in priority order, with the next step visible even when a card is closed. Expand **Entender esta sugestão** for the observation and impact; **Evidências e limites** contains preserved citations and available sources. Resolved and dismissed items appear separately. After opening a source, **Voltar à sugestão** returns to the selected result.
+
+If live updates disconnect, **Reconectar acompanhamento** reads the existing run without starting another analysis. Failure, cancellation and partial results are distinct from a completed analysis without suggestions.
 
 Findings never rewrite note content.
 
@@ -118,4 +122,4 @@ Select text to limit the scope, then click **Melhorar**. Review the captured blo
 
 **Buscar conexoes** is a separate operation for up to three connections to other notes. Review and remove candidate sources before confirming. These suggestions do not create confirmed relationships.
 
-For broader review, **Analise IA** starts with connections selected. All selected lenses share one call. Choose full or incremental review, examine the selected excerpts, and remove sources if needed. Reports show evidence and offer **Aprofundar** as a separately confirmed call. Recurring findings preserve earlier resolved/dismissed decisions.
+For broader review, **Analisar notas** starts with connections selected. All selected objectives share one call. Full review is the default; **Opções avançadas** offers review of changed notes and related history. Edit note selection in configuration, then inspect the frozen excerpts before confirming. **Pedir mais detalhes** prepares a separately confirmed call and uses the same next-step, explanation and evidence layout. Recurring findings preserve earlier resolved/dismissed decisions.

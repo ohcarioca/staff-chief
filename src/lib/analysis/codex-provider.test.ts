@@ -10,6 +10,13 @@ const snapshot: AnalysisSnapshot = {
 };
 
 describe("specialist output validation", () => {
+  it.each(["risks", "consolidation"] as const)("uses the concise finding instructions for legacy %s", async (step) => {
+    let prompt = "";
+    const provider = new CodexCliProvider(async (value) => { prompt = value; return JSON.stringify({ summary: "", findings: [] }); });
+    await provider.runStep({ step, snapshot, previousOutputs: [], signal: new AbortController().signal });
+    expect(prompt).toContain("ONE concrete next step beginning with a verb");
+    expect(prompt).toContain("Never invent an owner, deadline");
+  });
   it("removes invented sources and drops findings without valid evidence", () => {
     const output: SpecialistOutput = {
       summary: "Summary",

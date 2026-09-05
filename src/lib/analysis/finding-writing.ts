@@ -1,0 +1,5 @@
+// Editorial guidance, not schema limits: historical reports remain readable unchanged.
+export const findingWritingInstructions = `For every finding, use plain Brazilian Portuguese that a manager can understand without technical analysis jargon.
+Aim for a direct title of at most 90 characters naming the concrete issue. Keep explanation to at most two short sentences, distinguishing the observed fact from your inference. Keep impact to one sentence and avoid repeating the explanation in priorityReason.
+Write suggestedAction as ONE concrete next step beginning with a verb. Do not bundle multiple decisions or a project plan into it. If evidence cannot support a specific action, leave suggestedAction empty. Never invent an owner, deadline, commitment or certainty. Preserve all names, numbers, dates, negations, disagreements and uncertainty; copy evidence quotes verbatim.
+Example of style only, never a fact to reuse: title="Produto e Growth medem ativação de formas diferentes"; suggestedAction="Definir qual critério de ativação será usado no relatório."`;
