@@ -199,7 +199,7 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const [typeFormOpen, setTypeFormOpen] = useState(false);
   const [typeName, setTypeName] = useState("");
   const [typeIcon, setTypeIcon] = useState("○");
-  const [typeColor, setTypeColor] = useState("#4F7D70");
+  const [typeColor, setTypeColor] = useState("#8B176F");
   const [notice, setNotice] = useState("");
   const [analysisScope, setAnalysisScope] = useState<AnalysisScope | null>(null);
   const [analysisTypes, setAnalysisTypes] = useState<AnalysisType[] | undefined>(undefined);
@@ -357,7 +357,7 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
 
   const visibleObjects = state.objects.filter((object) => object.typeId === selectedTypeId && (!search.trim() || `${object.name} ${object.description}`.toLocaleLowerCase("pt-BR").includes(search.trim().toLocaleLowerCase("pt-BR"))));
 
-  return <main className="app-shell" style={{ "--sidebar-width": sidebarCollapsed ? "72px" : "275px", ...(inspectorWidth ? { "--inspector-width": `${inspectorWidth}px` } : {}) } as React.CSSProperties}>
+  return <main className={`app-shell view-${view}`} style={{ "--sidebar-width": sidebarCollapsed ? "72px" : "275px", ...(inspectorWidth ? { "--inspector-width": `${inspectorWidth}px` } : {}) } as React.CSSProperties}>
     <aside className={`sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`} ref={sidebarRef}>
       <button className="sidebar-collapse" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}</button>
       <div className="brand"><div className="brand-mark"><BrainCircuit size={20} /></div><div className="brand-copy"><strong>Staff Chief</strong><span>segundo cérebro</span></div></div>

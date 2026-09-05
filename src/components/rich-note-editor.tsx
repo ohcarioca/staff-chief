@@ -143,7 +143,7 @@ const StaffMention = Mention.extend({
       ...this.parent?.(),
       typeId: { default: null },
       typeLabel: { default: null },
-      color: { default: "#45A886" },
+      color: { default: "#8B176F" },
       isNew: { default: false },
     };
   },

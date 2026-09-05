@@ -158,12 +158,12 @@ export function KnowledgeMap({ state, selectedObjectId, onSelectObject }: Knowle
       context.fill();
     }
     roundedRect(context, node.x - symbolSize / 2, node.y - symbolSize / 2, symbolSize, symbolSize, 6 / scale);
-    context.fillStyle = node.kind === "note" ? "#24272b" : "#171a1d";
+    context.fillStyle = node.kind === "note" ? "#25263a" : "#17182a";
     context.fill();
     context.strokeStyle = node.color;
     context.lineWidth = (selected ? 1.8 : 1.2) / scale;
     context.stroke();
-    context.fillStyle = node.kind === "note" ? "#c4c8cc" : node.color;
+    context.fillStyle = node.kind === "note" ? "#c9d9eb" : node.color;
     context.font = `${12 / scale}px "Segoe UI Symbol", "Segoe UI Emoji", sans-serif`;
     context.textAlign = "center";
     context.textBaseline = "middle";
@@ -174,9 +174,9 @@ export function KnowledgeMap({ state, selectedObjectId, onSelectObject }: Knowle
     const labelHeight = 17 / scale;
     const labelY = node.y + symbolSize / 2 + 7 / scale;
     roundedRect(context, node.x - labelWidth / 2, labelY, labelWidth, labelHeight, 4 / scale);
-    context.fillStyle = selected ? `${node.color}88` : "rgba(21,23,26,.94)";
+    context.fillStyle = selected ? `${node.color}88` : "rgba(23,18,38,.95)";
     context.fill();
-    context.fillStyle = "#e4e7e8";
+    context.fillStyle = "#f5f1f7";
     context.textBaseline = "middle";
     context.fillText(node.label, node.x, labelY + labelHeight / 2);
     context.restore();
@@ -205,9 +205,9 @@ export function KnowledgeMap({ state, selectedObjectId, onSelectObject }: Knowle
     const width = context.measureText(link.label).width + 8 / scale;
     const height = 14 / scale;
     roundedRect(context, x - width / 2, y - height / 2, width, height, 3 / scale);
-    context.fillStyle = link.kind === "suggestion" ? "#322642" : link.kind === "relationship" ? "#193b35" : "#202327";
+    context.fillStyle = link.kind === "suggestion" ? "#4b154b" : link.kind === "relationship" ? "#173957" : "#242235";
     context.fill();
-    context.fillStyle = link.kind === "suggestion" ? "#d5c5f5" : link.kind === "relationship" ? "#b9e2d8" : "#a5aab1";
+    context.fillStyle = link.kind === "suggestion" ? "#ffd4e8" : link.kind === "relationship" ? "#c8e4f8" : "#bbb5c4";
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(link.label, x, y);
@@ -234,14 +234,14 @@ export function KnowledgeMap({ state, selectedObjectId, onSelectObject }: Knowle
         width={dimensions.width}
         height={dimensions.height}
         graphData={graphData}
-        backgroundColor="#121416"
+        backgroundColor="#121321"
         nodeLabel={(node) => node.detail}
         nodeCanvasObject={paintNode}
         nodePointerAreaPaint={paintNodeHitArea}
         linkColor={(link) => {
           const connected = !hoveredId || nodeId(link.source) === hoveredId || nodeId(link.target) === hoveredId;
-          if (!connected) return "rgba(70,75,82,.08)";
-          return link.kind === "suggestion" ? "#8f6ad8" : link.kind === "relationship" ? "#5ab9a4" : link.kind === "mention" ? "#454a50" : "#555b61";
+          if (!connected) return "rgba(89,82,105,.09)";
+          return link.kind === "suggestion" ? "#e5006d" : link.kind === "relationship" ? "#4f9fd1" : link.kind === "mention" ? "#514b62" : "#6a6274";
         }}
         linkWidth={(link) => link.kind === "relationship" ? 1.8 : Math.min(3, 0.8 + link.weight * 0.35)}
         linkLineDash={(link) => link.kind === "suggestion" ? [5, 5] : link.kind === "mention" ? [2, 3] : null}
