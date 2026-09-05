@@ -4,13 +4,11 @@ Research answers specific questions using all active notes plus optional selecte
 
 ## Start and resume a conversation
 
-1. Open **Pesquisa** and choose **Nova conversa**.
-2. All active notes are included automatically, without date/search filters or a note-count cap. Optionally select up to 20 library documents. The combined source content must fit within 5 million Markdown characters; an excess blocks creation explicitly rather than omitting notes.
-3. Choose **Conferir fontes** and review titles and revisions. The local preview expires after 30 minutes.
-4. Choose **Confirmar fontes e criar conversa**. This stores the exact previewed versions and makes no AI call.
-5. Enter a specific question (up to 4,000 characters) and click **Enviar**.
+1. Open **Pesquisa** and choose **Nova conversa** to start immediately with all active notes. No source confirmation is required and creating a conversation makes no AI call.
+2. To include library documents, choose **Com documentos**, select up to 20 documents and click **Iniciar conversa**. Notes are always included automatically, without date filters or a count cap. The combined source limit is 5 million characters; excess content is rejected explicitly.
+3. Enter a question (up to 4,000 characters) and click **Enviar**. This authorizes sending the question, recent history and relevant source excerpts to Codex.
 
-Each **Enviar** authorizes the question, recent conversation history and retrieved excerpts from the confirmed notes and documents to be sent to Codex. Sources, including every active note, are confirmed once for the conversation. To use revised documents or a different selection, create a new conversation. Editing or archiving the original notes/documents does not alter existing conversations. Existing conversations retain their original sources; start a new conversation to include all current notes.
+Sources are frozen at creation. Editing or archiving notes/documents does not alter existing conversations. Start another conversation to use current notes or different documents.
 
 Conversations are saved automatically after submission. Rename them, archive them, or enable **Conversas arquivadas** to restore one. Unsaved question/title drafts require confirmation before navigation. Leaving the view does not cancel an ongoing answer. Reopening a conversation reconnects to its saved execution state.
 
@@ -51,7 +49,7 @@ All routes inherit the local Host/Origin checks and run in Node.js.
 | --- | --- |
 | `POST /api/research/conversations/preview` | `{ documentIds }` (an empty array is allowed) produces a local expiring preview including all active notes |
 | `GET /api/research/conversations?archived=true` | List archived conversations; default lists active ones |
-| `POST /api/research/conversations` | `{ previewId }` confirms exact source versions |
+| `POST /api/research/conversations` | `{ requestId, documentIds?: [] }` creates directly with automatic notes; retries with the same UUID return the same conversation. Legacy `{ previewId }` is still supported |
 | `GET /api/research/conversations/:id` | Sources metadata, messages and execution state |
 | `PATCH /api/research/conversations/:id` | Optional `{ title, archived }` |
 | `GET /api/research/conversations/:id/sources/:sourceId` | Full preserved source, scoped to its conversation |
@@ -61,3 +59,5 @@ All routes inherit the local Host/Origin checks and run in Node.js.
 | `POST /api/research/messages/:id/retry` | `{ attempt }`; manual, idempotent retry |
 
 Validation uses status 400, missing records 404, and conflicting submissions or archived conversations 409. The answer contract contains `blocks: [{ text, citations: [{ chunkId, quote }] }]` and `insufficientEvidence`. Every factual block requires evidence; uncited blocks are reserved for limitation statements.
+
+Database initialization tracks a schema version on cached connections. Additive migrations run on outdated connections after development hot reload; only opening a new connection recovers interrupted jobs. Unexpected API failures are logged on the server while clients receive a generic error.

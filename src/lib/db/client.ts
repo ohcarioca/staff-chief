@@ -11,7 +11,11 @@ type DatabaseState = {
   sqlite: Database.Database;
   orm: ReturnType<typeof drizzle<typeof schema>>;
   path: string;
+  schemaVersion?: number;
 };
+
+// Advance when initialization gains an additive schema migration, including during HMR.
+const schemaVersion = 2;
 
 const globalForDatabase = globalThis as unknown as {
   staffChiefDatabase?: DatabaseState;
@@ -29,7 +33,7 @@ export function normalizeName(value: string) {
   return value.trim().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 }
 
-function initialize(sqlite: Database.Database) {
+function initialize(sqlite: Database.Database, recoverInterrupted = true) {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   sqlite.exec(`
@@ -58,8 +62,6 @@ function initialize(sqlite: Database.Database) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS research_messages_pending_uq ON research_messages(conversation_id)
       WHERE status IN ('queued','running');
-    UPDATE research_messages SET status='interrupted', error='Execução interrompida. Tente novamente manualmente.',
-      completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status IN ('queued','running');
     CREATE TABLE IF NOT EXISTS library_documents (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, original_name TEXT NOT NULL,
       original_format TEXT NOT NULL, original_size INTEGER NOT NULL, file_hash TEXT NOT NULL UNIQUE,
@@ -123,6 +125,9 @@ function initialize(sqlite: Database.Database) {
       note_id UNINDEXED, title, content, tokenize='unicode61 remove_diacritics 2'
     );
   `);
+  if (recoverInterrupted) sqlite.exec(`UPDATE research_messages SET status='interrupted',
+    error='Execução interrompida. Tente novamente manualmente.',
+    completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status IN ('queued','running')`);
   const findingColumns = sqlite.prepare("PRAGMA table_info(findings)").all() as Array<{ name: string }>;
   if (!findingColumns.some((column) => column.name === "detail_json")) {
     sqlite.exec("ALTER TABLE findings ADD COLUMN detail_json TEXT");
@@ -145,12 +150,17 @@ function createDatabase(): DatabaseState {
   const databasePath = path.join(directory, "staff-chief.db");
   const sqlite = new Database(databasePath);
   initialize(sqlite);
-  return { sqlite, orm: drizzle(sqlite, { schema }), path: databasePath };
+  return { sqlite, orm: drizzle(sqlite, { schema }), path: databasePath, schemaVersion };
 }
 
 export function getDatabase() {
   if (!globalForDatabase.staffChiefDatabase) {
     globalForDatabase.staffChiefDatabase = createDatabase();
+  } else if (globalForDatabase.staffChiefDatabase.schemaVersion !== schemaVersion) {
+    const current = globalForDatabase.staffChiefDatabase;
+    current.sqlite.transaction(() => initialize(current.sqlite, false))();
+    current.orm = drizzle(current.sqlite, { schema });
+    current.schemaVersion = schemaVersion;
   }
   return globalForDatabase.staffChiefDatabase;
 }

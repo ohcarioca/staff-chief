@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { confirmConversation, listConversations } from "@/lib/research/repository";
+import { confirmConversation, createConversation, listConversations } from "@/lib/research/repository";
 import { researchApiError } from "@/lib/research/http";
 export const runtime = "nodejs";
 export async function GET(request: Request) {
@@ -7,6 +7,12 @@ export async function GET(request: Request) {
   catch (error) { return researchApiError(error); }
 }
 export async function POST(request: Request) {
-  try { return Response.json(confirmConversation(z.object({ previewId: z.string().uuid() }).strict().parse(await request.json()).previewId), { status: 201 }); }
+  try {
+    const input = z.union([
+      z.object({ previewId: z.string().uuid() }).strict(),
+      z.object({ requestId: z.string().uuid(), documentIds: z.array(z.string().uuid()).max(20).default([]) }).strict(),
+    ]).parse(await request.json());
+    return Response.json("previewId" in input ? confirmConversation(input.previewId) : createConversation(input.documentIds, input.requestId), { status: 201 });
+  }
   catch (error) { return researchApiError(error); }
 }

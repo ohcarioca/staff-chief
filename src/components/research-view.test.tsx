@@ -39,36 +39,34 @@ describe("conversational research UI", () => {
     await act(async () => { pending[2].resolve(Response.json([])); });
     expect(pending.every((item) => !item.signal)).toBe(true);
   });
-  it("allows notes-only research without selecting a library document", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.endsWith("/preview")) return Response.json({ id: "preview-notes", characters: 20, sources: [{ ...source, documentId: "note:document-1", title: "Nota: Compras" }] });
-      return Response.json([]);
-    });
+  it("starts notes-only research directly without a confirmation or AI request", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => Response.json(init?.method === "POST" ? conversation : []));
     vi.stubGlobal("fetch", fetchMock);
     render(<ResearchView onDirtyChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Nova conversa" }));
-    await screen.findByText(/continuar apenas com suas notas/);
-    fireEvent.click(screen.getByRole("button", { name: "Conferir fontes" }));
-    expect(await screen.findByText("Nota incluída automaticamente")).toBeTruthy();
-    expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/preview"))).toBe(true);
+    expect(await screen.findByRole("textbox", { name: "Pergunta" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0][0]).toBe("/api/research/conversations");
+    expect(JSON.parse(posts[0][1]!.body as string)).toMatchObject({ documentIds: [], requestId: expect.any(String) });
   });
-  it("selects, previews and confirms sources without sending an AI message", async () => {
+  it("adds optional documents in one step without confirming notes or sending an AI message", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/library/documents") return Response.json([{ id: source.documentId, title: source.title, originalFormat: "md", revision: 1 }]);
-      if (url.endsWith("/preview")) return Response.json({ id: "preview-1", expiresAt: "2026-09-05T12:30:00.000Z", characters: 21, sources: [source] });
-      if (init?.method === "POST") return Response.json(conversation);
-      return Response.json([]);
+      return Response.json(init?.method === "POST" ? conversation : []);
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<ResearchView onDirtyChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Nova conversa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Com documentos" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: /Compras Aurora/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Conferir fontes" }));
-    expect(await screen.findByText(/Estas versões serão preservadas/)).toBeTruthy();
-    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST").map(([url]) => url)).toEqual(["/api/research/conversations/preview"]);
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar fontes e criar conversa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar conversa" }));
     expect(await screen.findByRole("textbox", { name: "Pergunta" })).toBeTruthy();
-    expect(fetchMock.mock.calls.some(([url]) => url.includes("/messages"))).toBe(false);
+    const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0][0]).toBe("/api/research/conversations");
+    expect(JSON.parse(posts[0][1]!.body as string).documentIds).toEqual([source.documentId]);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes("/messages") || url.includes("/preview"))).toBe(false);
   });
   it("subscribes to saved running messages, shows verified citations and opens the preserved source", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {

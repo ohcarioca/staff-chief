@@ -22,7 +22,7 @@ function messageFromRow(row: MessageRow): ResearchMessage {
   return { ...message, answer: answerJson ? JSON.parse(answerJson) : null, historyOmitted: context.historyOmitted, chunks: context.chunks };
 }
 
-export function prepareConversation(documentIds: unknown): ResearchPreview {
+export function prepareConversation(documentIds: unknown, identity: string = randomUUID()): ResearchPreview {
   const ids = z.array(z.string().uuid()).max(researchLimits.documents).parse(documentIds);
   const documents = getLibraryContext([...new Set(ids)]);
   // Read every active note, independently of the workspace search/date filters.
@@ -38,10 +38,15 @@ export function prepareConversation(documentIds: unknown): ResearchPreview {
   if (characters > researchLimits.characters) throw new ResearchError("As notas e os documentos excedem 5 milhões de caracteres. Nenhuma fonte foi omitida. Reduza os documentos selecionados ou arquive notas que não precisam participar.");
   for (const [id, item] of previews) if (Date.parse(item.preview.expiresAt) <= Date.now()) previews.delete(id);
   if (previews.size >= 10) previews.delete(previews.keys().next().value!);
-  const preview: ResearchPreview = { id: randomUUID(), expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), characters,
+  const preview: ResearchPreview = { id: identity, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), characters,
     sources: sources.map(({ id, documentId, title, revision }) => ({ id, documentId, title, revision })) };
   previews.set(preview.id, { preview, sources, databasePath: getDatabase().path });
   return preview;
+}
+
+export function createConversation(documentIds: unknown, requestId: string): ResearchConversation {
+  if (database().prepare("SELECT id FROM research_conversations WHERE id=?").get(requestId)) return getConversation(requestId);
+  return confirmConversation(prepareConversation(documentIds, requestId).id);
 }
 
 export function confirmConversation(previewId: string): ResearchConversation {

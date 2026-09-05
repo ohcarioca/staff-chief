@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, BookOpen, MessageSquare, Plus, Send, X } from "lucide-react";
 import { LibraryMarkdown } from "./library-view";
 import type { LibraryDocumentSummary } from "@/lib/library/contracts";
-import { isNoteSource, isPending, researchLimits, type ResearchChunk, type ResearchConversation, type ResearchConversationSummary, type ResearchMessage, type ResearchPreview, type ResearchSource } from "@/lib/research/contracts";
+import { isNoteSource, isPending, researchLimits, type ResearchChunk, type ResearchConversation, type ResearchConversationSummary, type ResearchMessage, type ResearchSource } from "@/lib/research/contracts";
 
 async function request<T>(url: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, { method, signal, cache: "no-store", ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
@@ -19,7 +19,7 @@ function ResearchSetup({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [documents, setDocuments] = useState<LibraryDocumentSummary[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [query, setQuery] = useState("");
-  const [preview, setPreview] = useState<ResearchPreview | null>(null);
+  const creationId = useRef(crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,19 +34,12 @@ function ResearchSetup({ onClose, onCreated }: { onClose: () => void; onCreated:
   async function next() {
     setBusy(true); setError("");
     try {
-      if (preview) onCreated(await request<ResearchConversation>("/api/research/conversations", "POST", { previewId: preview.id }));
-      else setPreview(await request<ResearchPreview>("/api/research/conversations/preview", "POST", { documentIds: selected }));
+      onCreated(await request<ResearchConversation>("/api/research/conversations", "POST", { requestId: creationId.current, documentIds: selected }));
     } catch (error) { setError(error instanceof Error ? error.message : "Falha ao preparar conversa."); }
     finally { setBusy(false); }
   }
   return <dialog className="research-dialog" ref={dialog} aria-labelledby="research-setup-title" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}>
-    <header><div><span className="eyebrow">Nova conversa</span><h2 id="research-setup-title">{preview ? "Confira as fontes" : "Pesquise suas notas e documentos"}</h2></div><button className="icon-button" disabled={busy} aria-label="Fechar seleção" onClick={onClose}><X size={18} /></button></header>
-    {preview ? <>
-      <p>Todas as notas ativas estão incluídas abaixo, junto aos documentos selecionados. Estas versões serão preservadas nesta conversa.</p>
-      <ul className="research-preview-sources">{preview.sources.map((source) => <li key={source.id}><BookOpen size={16} /><span>{source.title}<small>{isNoteSource(source) ? "Nota incluída automaticamente" : `Revisão ${source.revision}`}</small></span></li>)}</ul>
-      <p className="research-muted">{preview.characters.toLocaleString("pt-BR")} caracteres · Prévia válida por 30 minutos.</p>
-      <div className="research-consent">Ao confirmar, você prepara as fontes. Cada clique em <strong>Enviar</strong> autoriza o envio da pergunta, do histórico recente e de trechos destas fontes ao Codex. A pesquisa consulta trechos relevantes e não substitui a leitura completa dos documentos.</div>
-    </> : <>
+    <header><div><span className="eyebrow">Nova conversa</span><h2 id="research-setup-title">Adicionar documentos</h2></div><button className="icon-button" disabled={busy} aria-label="Fechar seleção" onClick={onClose}><X size={18} /></button></header>
       <p>Todas as notas ativas entram automaticamente, sem filtro por data. Você pode adicionar até 20 documentos da biblioteca. O limite total é de 5 milhões de caracteres. Para incluir notas novas ou atualizadas depois, inicie outra conversa.</p>
       <input className="research-input" aria-label="Buscar fontes" placeholder="Buscar documento pelo título…" value={query} onChange={(event) => setQuery(event.target.value)} />
       <div className="research-source-picker">{loading ? <p>Carregando documentos…</p> : !documents.length ? <p>Nenhum documento na biblioteca. Você pode continuar apenas com suas notas.</p> : documents.filter((document) => document.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map((document) => <label key={document.id}>
@@ -54,9 +47,8 @@ function ResearchSetup({ onClose, onCreated }: { onClose: () => void; onCreated:
         <span>{document.title}<small>{document.originalFormat.toUpperCase()} · Revisão {document.revision}</small></span>
       </label>)}</div>
       <p className="research-muted">{selected.length} de 20 documentos selecionados</p>
-    </>}
     {error && <p role="alert" className="research-error">{error}</p>}
-    <footer>{preview && <button className="secondary-button" disabled={busy} onClick={() => { setPreview(null); setError(""); }}>Voltar à seleção</button>}<button className="primary-button" disabled={busy || loading} onClick={() => void next()}>{busy ? "Preparando…" : preview ? "Confirmar fontes e criar conversa" : "Conferir fontes"}</button></footer>
+    <footer><button className="primary-button" disabled={busy || loading} onClick={() => void next()}>{busy ? "Preparando…" : "Iniciar conversa"}</button></footer>
   </dialog>;
 }
 
@@ -184,15 +176,30 @@ export function ResearchView({ onDirtyChange }: { onDirtyChange: (dirty: boolean
   const [error, setError] = useState("");
   const dirty = useRef(false);
   const selection = useRef(0);
+  const creationId = useRef<string | null>(null);
+  const creating = useRef(false);
   const changed = useCallback(() => setReload((value) => value + 1), []);
   const dirtyChanged = useCallback((value: boolean) => { dirty.current = value; onDirtyChange(value); }, [onDirtyChange]);
   useEffect(() => {
     let active = true;
-    request<ResearchConversationSummary[]>(`/api/research/conversations?archived=${archived}`).then((value) => { if (active) setConversations(value); })
+    request<ResearchConversationSummary[]>(`/api/research/conversations?archived=${archived}`).then((value) => { if (active) { setConversations(value); setError(""); } })
       .catch((error) => { if (active) setError(error.message); });
     return () => { active = false; };
   }, [archived, reload]);
   const guard = () => !dirty.current || window.confirm("Há uma pergunta ou título não salvo. Descartar e continuar?");
+  const created = (conversation: ResearchConversation) => {
+    selection.current++; setSelected(conversation); setSetup(false); setArchived(false); setError(""); changed();
+  };
+  async function start() {
+    if (creating.current || !guard()) return;
+    creating.current = true; setLoading(true); setError("");
+    creationId.current ??= crypto.randomUUID();
+    try {
+      created(await request<ResearchConversation>("/api/research/conversations", "POST", { requestId: creationId.current, documentIds: [] }));
+      creationId.current = null;
+    } catch (error) { setError(error instanceof Error ? error.message : "Falha ao iniciar conversa."); }
+    finally { creating.current = false; setLoading(false); }
+  }
   async function open(id: string) {
     if (id === selected?.id || !guard()) return;
     const token = ++selection.current; setLoading(true); setError("");
@@ -201,14 +208,14 @@ export function ResearchView({ onDirtyChange }: { onDirtyChange: (dirty: boolean
     finally { if (token === selection.current) setLoading(false); }
   }
   return <div className="research-layout">
-    <aside className="research-history" aria-label="Histórico de pesquisas"><button className="primary-button" disabled={loading} onClick={() => { if (guard()) setSetup(true); }}><Plus size={16} />Nova conversa</button>
+    <aside className="research-history" aria-label="Histórico de pesquisas"><button className="primary-button" disabled={loading} onClick={() => void start()}><Plus size={16} />Nova conversa</button><button className="secondary-button" disabled={loading} onClick={() => { if (guard()) setSetup(true); }}>Com documentos</button>
       <label className="research-archived"><input type="checkbox" checked={archived} onChange={(event) => setArchived(event.target.checked)} />Conversas arquivadas</label>
       {!conversations.length && <p className="research-muted">{archived ? "Nenhuma conversa arquivada." : "Suas conversas aparecerão aqui."}</p>}
       {conversations.map((conversation) => <button className={`research-history-item ${selected?.id === conversation.id ? "is-selected" : ""}`} key={conversation.id} onClick={() => void open(conversation.id)}><MessageSquare size={16} /><span>{conversation.title}<small>{new Date(conversation.updatedAt).toLocaleDateString("pt-BR")}</small></span></button>)}
     </aside>
     <div className="research-main" inert={loading}>{error && <p role="alert" className="research-error">{error}</p>}{loading && <p role="status">Abrindo conversa…</p>}
-      {selected ? <ConversationThread key={selected.id} initial={selected} onChanged={changed} onDirtyChange={dirtyChanged} /> : <div className="research-welcome"><BookOpen size={38} /><h2>Converse com sua biblioteca</h2><p>Pesquise todas as suas notas ativas e, se desejar, adicione documentos da biblioteca. As fontes e o histórico ficam preservados em cada conversa.</p><button className="secondary-button" onClick={() => setSetup(true)}>Selecionar fontes</button></div>}
+      {selected ? <ConversationThread key={selected.id} initial={selected} onChanged={changed} onDirtyChange={dirtyChanged} /> : <div className="research-welcome"><BookOpen size={38} /><h2>Converse com sua biblioteca</h2><p>Pesquise todas as suas notas ativas e, se desejar, adicione documentos da biblioteca. As fontes e o histórico ficam preservados em cada conversa.</p><button className="secondary-button" disabled={loading} onClick={() => void start()}>Iniciar conversa com notas</button></div>}
     </div>
-    {setup && <ResearchSetup onClose={() => setSetup(false)} onCreated={(conversation) => { selection.current++; setSelected(conversation); setSetup(false); setArchived(false); changed(); }} />}
+    {setup && <ResearchSetup onClose={() => setSetup(false)} onCreated={created} />}
   </div>;
 }

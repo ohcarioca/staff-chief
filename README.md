@@ -2,7 +2,7 @@
 
 Staff Chief is a local-first management knowledge base for capturing notes, connecting people, projects, ideas, and custom object types, and running deliberate AI-assisted reviews through the locally authenticated Codex CLI.
 
-The application is designed for one person on one Windows workstation. It listens only on `127.0.0.1`, stores its database locally, performs no background analysis, and requires an explicit preview and confirmation before any note content is sent to Codex. Research conversations confirm library sources once; each Send authorizes the question, recent history and retrieved excerpts.
+The application is designed for one person on one Windows workstation. It listens only on `127.0.0.1`, stores its database locally, performs no background analysis, and requires an explicit user action before content is sent to Codex. Analysis uses preview and confirmation. Research starts directly with all active notes; each Send authorizes the question, recent history and retrieved excerpts.
 
 > **Project status:** MVP under active development. The user interface is in Brazilian Portuguese; source code and documentation are in English.
 

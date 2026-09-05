@@ -11,6 +11,7 @@ import { researchLimits, type ResearchAnswer, type ResearchContext } from "./con
 import { confirmConversation, enqueueMessage, getConversation, getMessage, getMessageContext, getSource, listConversations, prepareConversation, retrieveChunks, retryMessage, updateConversation } from "./repository";
 import { cancelMessage, executeMessage } from "./service";
 import { GET as events } from "@/app/api/research/messages/[id]/events/route";
+import { POST as create } from "@/app/api/research/conversations/route";
 
 let directory: string;
 beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), "staff-chief-research-")); process.env.STAFF_CHIEF_DATA_DIR = directory; resetDatabaseForTests(); });
@@ -24,6 +25,37 @@ const answerFor = (context: ResearchContext): ResearchAnswer => ({ insufficientE
 const providerFor = (id: string) => ({ runStructured: vi.fn(async () => answerFor(getMessageContext(id))) });
 
 describe("research sources and retrieval", () => {
+  it("migrates a cached pre-research database without reopening it or losing notes", () => {
+    const note = saveNote({ title: "Preserved", contentJson: { type: "doc", content: [] } });
+    const cached = getDatabase();
+    cached.sqlite.exec("DROP TABLE research_messages; DROP TABLE research_chunks; DROP TABLE research_chunks_fts; DROP TABLE research_sources; DROP TABLE research_conversations;");
+    delete cached.schemaVersion;
+    expect(() => cached.sqlite.prepare("SELECT * FROM research_conversations")).toThrow(/no such table/);
+    expect(listConversations()).toEqual([]);
+    expect(getDatabase().sqlite).toBe(cached.sqlite);
+    expect(cached.sqlite.prepare("SELECT id FROM notes WHERE id=?").get(note.id)).toBeTruthy();
+    expect(confirmConversation(prepareConversation([]).id).sources).toHaveLength(1);
+  });
+  it("does not interrupt a live research message when updating cached schema metadata", async () => {
+    const { conversation: chat } = await conversation();
+    const message = send(chat.id);
+    delete getDatabase().schemaVersion;
+    expect(getMessage(message.id).status).toBe("queued");
+    resetDatabaseForTests();
+    expect(getMessage(message.id).status).toBe("interrupted");
+  });
+  it("creates a notes conversation directly and deduplicates creation retries without starting AI", async () => {
+    saveNote({ title: "Automatic note", contentJson: { type: "doc", content: [] } });
+    const body = JSON.stringify({ requestId: randomUUID(), documentIds: [] });
+    const request = () => new Request("http://localhost:3000/api/research/conversations", { method: "POST", body });
+    const first = await create(request());
+    expect(first.status).toBe(201);
+    const chat = await first.json();
+    expect(chat.sources).toHaveLength(1);
+    expect(chat.messages).toEqual([]);
+    expect(await (await create(request())).json()).toEqual(chat);
+    expect(listConversations()).toHaveLength(1);
+  });
   it("automatically includes all active notes without date or count filters, supports notes-only research and preserves snapshots", async () => {
     const notes = Array.from({ length: 25 }, (_, index) => saveNote({ title: `Registro ${index}`, contentJson: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: index === 0 ? "A gerente Zuleica aprova o orçamento do projeto Safira." : `Registro histórico ${index}.` }] }] } }));
     const archived = saveNote({ title: "Arquivada", contentJson: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Exclusiva arquivada" }] }] } });
