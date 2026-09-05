@@ -61,3 +61,9 @@ All routes inherit the local Host/Origin checks and run in Node.js.
 Validation uses status 400, missing records 404, and conflicting submissions or archived conversations 409. The answer contract contains `blocks: [{ text, citations: [{ chunkId, quote }] }]` and `insufficientEvidence`. Every factual block requires evidence; uncited blocks are reserved for limitation statements.
 
 Database initialization tracks a schema version on cached connections. Additive migrations run on outdated connections after development hot reload; only opening a new connection recovers interrupted jobs. Unexpected API failures are logged on the server while clients receive a generic error.
+
+### Codex executable on Windows
+
+The server uses `CODEX_BIN` when configured. Otherwise it looks for `codex.exe` in its own PATH and then in installed `openai.chatgpt-*` VS Code extensions under the user's `.vscode/extensions` directory. The newest available extension executable is preferred. It launches the executable directly, including paths containing spaces, without a shell. This avoids `spawn codex ENOENT` when the server was launched outside the VS Code terminal.
+
+If no executable is available, research reports that the CLI was not found rather than suggesting a login failure. Set `CODEX_BIN` to the full executable path and restart the server if using a custom installation. Execution failure logs include the message ID, error type and safe user-facing diagnostic; they do not include prompts, source text or raw Codex stderr.

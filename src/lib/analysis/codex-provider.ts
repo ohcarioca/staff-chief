@@ -1,5 +1,6 @@
 import "server-only";
 import { findingWritingInstructions } from "./finding-writing";
+import { resolveCodexBinary } from "./codex-binary";
 
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -144,10 +145,11 @@ export class CodexCliProvider implements AnalysisProvider {
     }
   }
 
-  protected execute(prompt: string, schemaPath: string, cwd: string, signal: AbortSignal) {
+  protected async execute(prompt: string, schemaPath: string, cwd: string, signal: AbortSignal) {
     if (this.executor) return this.executor(prompt, schemaPath, cwd, signal);
+    const codexBinary = await resolveCodexBinary();
+    if (signal.aborted) throw new DOMException("Análise cancelada.", "AbortError");
     return new Promise<string>((resolve, reject) => {
-      const codexBinary = process.env.CODEX_BIN || "codex";
       const child = spawn(/* turbopackIgnore: true */ codexBinary, [
         "exec", "--ephemeral", "--sandbox", "read-only", "--skip-git-repo-check",
         "--output-schema", schemaPath, "-",
@@ -172,6 +174,7 @@ export class CodexCliProvider implements AnalysisProvider {
       }, 180_000);
       signal.addEventListener("abort", abort, { once: true });
       child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+      child.stdin.on("error", (error) => finish(error));
       child.stderr.on("data", (chunk) => { stderr += String(chunk); });
       child.on("error", (error) => finish(new Error(`Não foi possível iniciar o Codex CLI: ${error.message}`)));
       child.on("close", (code) => {

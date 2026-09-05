@@ -22,8 +22,10 @@ export async function executeMessage(id: string, provider: Provider = new CodexC
   } catch (error) {
     const cancelled = controller.signal.aborted;
     const safeMessage = cancelled ? "Resposta cancelada." : error instanceof ResearchError ? error.message
+      : error instanceof Error && /spawn .*ENOENT/.test(error.message) ? "O servidor não encontrou o Codex CLI. Instale o Codex ou configure CODEX_BIN com o caminho de codex.exe e reinicie o servidor."
       : error instanceof Error && /três minutos|timeout/i.test(error.message) ? "O Codex excedeu três minutos. Tente novamente."
       : "Não foi possível obter uma resposta válida do Codex. Verifique a sessão local e tente novamente.";
+    if (!cancelled) console.error("[research] Execution failed", id, error instanceof Error ? error.name : "UnknownError", safeMessage);
     finishMessage(id, cancelled ? "cancelled" : "failed", null, safeMessage, message.attempt);
   } finally { if (controllers.get(id) === controller) controllers.delete(id); }
 }
