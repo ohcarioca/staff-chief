@@ -14,6 +14,10 @@ Conversations are saved automatically after submission. Rename them, archive the
 
 ## Sources and limitations
 
+Research uses its own Portuguese search terms, retaining category words such as projeto and handling regular plurals such as projetos/ativos. Category inventory questions also consider the preserved chunks of the conversation and prioritize distinct typed mentions, then source diversity, within the same 12-chunk and byte budgets. Larger inventories may require narrower questions; results are not guaranteed to cover every source.
+
+New note snapshots include the mention names and type labels stored in the note editor as a visible Markdown section. A label such as `Projeto: Acesso Seguro` establishes classification, not active status. These labels remain frozen and travel in version 4 backups. Existing conversations retain their original Markdown; start a new conversation to include missing type labels. Send a new question to use updated retrieval: completed messages and retries preserve their original submitted context.
+
 Source chips open preserved documents. Citation buttons open the exact excerpt and highlight its quoted evidence, with an option to read the complete preserved document. Document IDs and quote text are checked on the server before an answer is displayed. This verifies citation existence, not the correctness of every model inference.
 
 The search uses local SQLite FTS5 over approximately 1,600-character chunks, with 200-character overlap and section/page labels. It ranks the current question first and also uses the two previous completed questions for follow-ups. Up to 12 relevant chunks are selected, with coverage across matching sources. Search is lexical: synonyms or vague questions may require rephrasing with document terms.

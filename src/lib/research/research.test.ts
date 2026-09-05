@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDatabase, resetDatabaseForTests } from "@/lib/db/client";
 import { exportBackup, restoreBackup, saveNote, archiveItem } from "@/lib/db/repository";
 import { importDocument, updateDocument } from "@/lib/library/repository";
-import { chunkSource, noEvidenceAnswer, prepareContext, validateAnswer } from "./context";
+import { chunkSource, ftsQuery, inventoryCategory, noEvidenceAnswer, prepareContext, validateAnswer } from "./context";
 import { researchLimits, type ResearchAnswer, type ResearchContext } from "./contracts";
 import { confirmConversation, enqueueMessage, getConversation, getMessage, getMessageContext, getSource, listConversations, prepareConversation, retrieveChunks, retryMessage, updateConversation } from "./repository";
 import { cancelMessage, executeMessage } from "./service";
@@ -25,6 +25,39 @@ const answerFor = (context: ResearchContext): ResearchAnswer => ({ insufficientE
 const providerFor = (id: string) => ({ runStructured: vi.fn(async () => answerFor(getMessageContext(id))) });
 
 describe("research sources and retrieval", () => {
+  it("retains category words and normalizes Portuguese plurals in search", () => {
+    expect(ftsQuery("Quais projetos citados?")).toBe('"projeto"*');
+    expect(ftsQuery("Projeto ativo")).toBe(ftsQuery("Projetos ativos"));
+    expect(inventoryCategory("Quais projetos são citados nas notas?")).toBe("projeto");
+    expect(inventoryCategory("Quais projetos citam Aurora?")).toBeNull();
+  });
+  it("retrieves six distinct typed projects despite many repeated mentions and freezes their classification", () => {
+    const names = ["Safira", "Boreal", "Cedro", "Delta", "Estrela", "Farol"];
+    const note = (name: string) => saveNote({ title: `Registro ${name}`, contentJson: { type: "doc", content: [{ type: "paragraph", content: [
+      { type: "mention", attrs: { typeId: "type-project", label: name } }, { type: "text", text: " tem uma proposta em avaliação; o status não foi confirmado." },
+    ] }] } });
+    for (let index = 0; index < 15; index++) note(names[0]);
+    const saved = names.slice(1).map(note);
+    const chat = confirmConversation(prepareConversation([]).id);
+    const result = retrieveChunks(chat.id, "Quais projetos citados?", []);
+    expect(result.length).toBeLessThanOrEqual(12);
+    for (const name of names) expect(result.some((chunk) => chunk.content.includes(`Projeto: ${name}`))).toBe(true);
+    expect(result.some((chunk) => chunk.content.includes("não indica que estejam ativas"))).toBe(true);
+    archiveItem("note", saved[0].id);
+    getDatabase().sqlite.prepare("UPDATE objects SET name='Renamed project' WHERE name=?").run("Boreal");
+    expect(retrieveChunks(chat.id, "projetos ativos", []).some((chunk) => chunk.content.includes("Projeto: Boreal"))).toBe(true);
+    const backup = exportBackup(); restoreBackup(backup);
+    expect(retrieveChunks(chat.id, "projetos", []).map((chunk) => chunk.content).join("\n")).toContain("Projeto: Farol");
+  });
+  it("broadens inventory retrieval within legacy snapshots without importing live sources", async () => {
+    const first = await importDocument("Overview.md", Buffer.from("# Visão geral\n\nO projeto Aurora está em revisão."));
+    const second = await importDocument("Boreal.md", Buffer.from("# Boreal\n\nA iniciativa Boreal depende de orçamento."));
+    const chat = confirmConversation(prepareConversation([first.document.id, second.document.id]).id);
+    await conversation("Projeto Externo não faz parte desta conversa.", "Externo");
+    expect(retrieveChunks(chat.id, "Quais projetos citados?", [])).toHaveLength(2);
+    expect(retrieveChunks(chat.id, "Boreal", []).every((chunk) => chunk.documentId === second.document.id)).toBe(true);
+    expect(retrieveChunks(chat.id, "Quais projetos citados?", []).some((chunk) => chunk.content.includes("Externo"))).toBe(false);
+  });
   it("migrates a cached pre-research database without reopening it or losing notes", () => {
     const note = saveNote({ title: "Preserved", contentJson: { type: "doc", content: [] } });
     const cached = getDatabase();

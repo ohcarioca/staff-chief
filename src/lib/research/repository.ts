@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getDatabase } from "@/lib/db/client";
 import { getLibraryContext } from "@/lib/library/repository";
-import { chunkSource, ftsQuery, prepareContext } from "./context";
+import { chunkSource, ftsQuery, inventoryCategory, inventoryChunks, prepareContext } from "./context";
 import { conversationUpdateSchema, isPending, messageInputSchema, ResearchError, researchLimits,
   type ResearchAnswer, type ResearchChunk, type ResearchContext, type ResearchConversation,
   type ResearchConversationSummary, type ResearchMessage, type ResearchPreview, type ResearchSource, type ResearchStatus } from "./contracts";
@@ -26,12 +26,21 @@ export function prepareConversation(documentIds: unknown, identity: string = ran
   const ids = z.array(z.string().uuid()).max(researchLimits.documents).parse(documentIds);
   const documents = getLibraryContext([...new Set(ids)]);
   // Read every active note, independently of the workspace search/date filters.
-  const notes = database().prepare("SELECT id,title,content_text FROM notes WHERE archived_at IS NULL ORDER BY created_at,id").all() as Array<{ id: string; title: string; content_text: string }>;
+  const notes = database().prepare("SELECT id,title,content_text,content_json FROM notes WHERE archived_at IS NULL ORDER BY created_at,id").all() as Array<{ id: string; title: string; content_text: string; content_json: string }>;
   const literal = (text: string) => text.replace(/([\\`*_{}\[\]<>()#+.!|>~-])/g, "\\$1");
+  const mentions = (json: string) => {
+    const labels = new Set<string>();
+    const walk = (node: { type?: string; attrs?: { typeLabel?: string; label?: string }; content?: typeof node[] }) => {
+      if (node.type === "mention" && node.attrs?.typeLabel && node.attrs.label) labels.add(`- ${literal(node.attrs.typeLabel)}: ${literal(node.attrs.label)}`);
+      node.content?.forEach(walk);
+    };
+    walk(JSON.parse(json));
+    return labels.size ? `## Menções estruturadas da nota\n\nClassificação das menções; não indica que estejam ativas ou em execução.\n\n${[...labels].join("\n")}\n\n## Conteúdo\n\n` : "";
+  };
   const sources: ResearchSource[] = [
     ...documents.map((doc) => ({ id: randomUUID(), documentId: doc.id, title: doc.title, revision: doc.revision, markdown: doc.markdown })),
     ...notes.map((note) => ({ id: randomUUID(), documentId: `note:${note.id}`, title: `Nota: ${note.title || "Sem título"}`.slice(0, 240), revision: 1,
-      markdown: `# ${literal(note.title || "Nota sem título")}\n\n${literal(note.content_text)}` })),
+      markdown: `# ${literal(note.title || "Nota sem título")}\n\n${mentions(note.content_json)}${literal(note.content_text)}` })),
   ];
   if (!sources.length) throw new ResearchError("Crie uma nota ou selecione um documento para iniciar a pesquisa.");
   const characters = sources.reduce((sum, source) => sum + source.markdown.length, 0);
@@ -117,6 +126,15 @@ export function retrieveChunks(conversationId: string, question: string, previou
       WHERE research_chunks_fts MATCH ? AND c.conversation_id=? ORDER BY bm25(research_chunks_fts,0,2,2,1), c.id LIMIT 120`).all(match, conversationId) as ResearchChunk[];
   };
   const current = find(question);
+  const category = inventoryCategory(question);
+  if (category) {
+    // Inventory needs broad coverage, including older snapshots without typed mentions.
+    // Read only this conversation; never supplement it with today's live objects.
+    const all = database().prepare(`SELECT c.id,c.source_id AS sourceId,s.document_id AS documentId,s.title,s.revision,
+      c.start_offset AS start,c.end_offset AS end,c.section,c.content
+      FROM research_chunks c JOIN research_sources s ON s.id=c.source_id WHERE c.conversation_id=? ORDER BY c.rowid`).all(conversationId) as ResearchChunk[];
+    return inventoryChunks([...current, ...all.filter((chunk) => !current.some((item) => item.id === chunk.id))], category);
+  }
   const previous = find(previousQuestions.slice(-2).join(" "));
   const ranked = [...current, ...previous.filter((chunk) => !current.some((item) => item.id === chunk.id))];
   // Reserve the first relevant hit per source, then fill with ranked detail.

@@ -1,5 +1,5 @@
 import "server-only";
-import { terms } from "@/lib/analysis/context";
+import { normalized } from "@/lib/analysis/context";
 import { answerJsonSchema, answerSchema, ResearchError, researchLimits, type ResearchAnswer, type ResearchChunk, type ResearchContext, type ResearchSource } from "./contracts";
 
 export function chunkSource(source: ResearchSource): ResearchChunk[] {
@@ -27,8 +27,37 @@ export function chunkSource(source: ResearchSource): ResearchChunk[] {
   return chunks;
 }
 
+const searchStop = new Set("para como uma umas uns com sem que por dos das nos nas pela pelo esta este isso sobre entre ainda muito foi tem ser sao nao qual quais liste listar todos todas citado citados citada citadas esse essa ponto explique explique-me".split(" "));
+export function researchTerms(question: string) {
+  return [...new Set((normalized(question).match(/[\p{L}\p{N}]{3,}/gu) ?? [])
+    .filter((term) => !searchStop.has(term))
+    .map((term) => term.length > 4 && /[oa]s$/.test(term) ? term.slice(0, -1) : term))].slice(0, 40);
+}
 export function ftsQuery(question: string) {
-  return terms(question).slice(0, 40).map((term) => `"${term}"*`).join(" OR ");
+  return researchTerms(question).map((term) => `"${term}"*`).join(" OR ");
+}
+export function inventoryCategory(question: string) {
+  const tokens = researchTerms(question);
+  const categories = new Set(["projeto", "pessoa", "cliente", "sistema", "time", "ideia", "metrica", "nota", "documento"]);
+  const category = tokens.find((term) => categories.has(term) && !["nota", "documento"].includes(term)) ?? tokens.find((term) => categories.has(term));
+  return category && tokens.every((term) => term === category || ["nota", "documento", "ativo", "ativa", "existente", "existentes", "registrado", "registrada"].includes(term)) ? category : null;
+}
+
+/** Coverage for inventory questions is based solely on the preserved excerpts. */
+export function inventoryChunks(chunks: ResearchChunk[], category: string) {
+  const entities = (chunk: ResearchChunk) => [...chunk.content.matchAll(/^- ([^:\n]+): (.+)$/gm)]
+    .filter((match) => researchTerms(match[1]).includes(category)).map((match) => normalized(match[2]));
+  const remaining = chunks.map((chunk) => ({ chunk, entities: entities(chunk) }));
+  const selected: ResearchChunk[] = [];
+  const covered = new Set<string>();
+  while (selected.length < researchLimits.chunks && remaining.length) {
+    remaining.sort((a, b) => b.entities.filter((name) => !covered.has(name)).length - a.entities.filter((name) => !covered.has(name)).length
+      || Number(selected.some((item) => item.sourceId === a.chunk.sourceId)) - Number(selected.some((item) => item.sourceId === b.chunk.sourceId)));
+    const item = remaining.shift()!;
+    selected.push(item.chunk);
+    item.entities.forEach((name) => covered.add(name));
+  }
+  return selected;
 }
 
 const instructions = `You answer specific questions using ONLY the supplied document excerpts.
