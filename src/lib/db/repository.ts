@@ -22,6 +22,10 @@ import type {
 } from "@/lib/contracts";
 import { getDataDirectory, getDatabase, normalizeName } from "./client";
 import { getAiRecord, putAiRecord } from "./ai-store";
+import { libraryBackupRowSchema } from "@/lib/library/contracts";
+import { markdownText } from "@/lib/library/repository";
+import { researchBackupColumns, researchBackupTables, validateResearchBackup } from "@/lib/research/backup";
+import { clearResearchPreviews } from "@/lib/research/repository";
 
 type Row = Record<string, unknown>;
 
@@ -564,8 +568,9 @@ export function acceptFinding(findingId: string, expectedObjectIds?: [string, st
   return relationId;
 }
 
-const backupTables = ["object_types", "objects", "notes", "note_mentions", "relationships", "analysis_runs", "analysis_steps", "findings", "finding_sources", "ai_records"] as const;
+const backupTables = ["object_types", "objects", "notes", "note_mentions", "relationships", "analysis_runs", "analysis_steps", "findings", "finding_sources", "ai_records", "library_documents", ...researchBackupTables] as const;
 const backupColumns = {
+  ...researchBackupColumns,
   object_types: ["id", "name", "name_normalized", "icon", "color", "created_at", "archived_at"],
   objects: ["id", "type_id", "name", "name_normalized", "description", "created_at", "updated_at", "archived_at"],
   notes: ["id", "title", "content_json", "content_text", "created_at", "updated_at", "archived_at"],
@@ -576,11 +581,12 @@ const backupColumns = {
   findings: ["id", "run_id", "category", "title", "explanation", "priority", "confidence", "suggested_action", "status", "created_at", "detail_json"],
   finding_sources: ["finding_id", "source_type", "source_id"],
   ai_records: ["id", "kind", "data_json", "created_at"],
+  library_documents: ["id", "title", "original_name", "original_format", "original_size", "file_hash", "markdown", "content_text", "warnings_json", "revision", "created_at", "updated_at", "archived_at"],
 } as const satisfies Record<(typeof backupTables)[number], readonly string[]>;
 const backupValueSchema = z.union([z.string(), z.number(), z.null()]);
 const backupRowSchema = z.record(z.string(), backupValueSchema);
 const backupSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   exportedAt: z.iso.datetime(),
   tables: z.object({
     object_types: z.array(backupRowSchema),
@@ -593,6 +599,11 @@ const backupSchema = z.object({
     findings: z.array(backupRowSchema),
     finding_sources: z.array(backupRowSchema),
     ai_records: z.array(backupRowSchema).optional(),
+    library_documents: z.array(backupRowSchema).optional(),
+    research_conversations: z.array(backupRowSchema).optional(),
+    research_sources: z.array(backupRowSchema).optional(),
+    research_chunks: z.array(backupRowSchema).optional(),
+    research_messages: z.array(backupRowSchema).optional(),
   }).strict(),
 }).strict();
 
@@ -600,14 +611,26 @@ export function exportBackup() {
   const { sqlite } = getDatabase();
   const tables: Record<string, Row[]> = {};
   backupTables.forEach((table) => { tables[table] = sqlite.prepare(`SELECT * FROM ${table}`).all() as Row[]; });
-  return { version: 2 as const, exportedAt: now(), tables };
+  return { version: 4 as const, exportedAt: now(), tables };
 }
 
 export function restoreBackup(input: unknown) {
+  if (getDatabase().sqlite.prepare("SELECT id FROM research_messages WHERE status IN ('queued','running') LIMIT 1").get()) throw new Error("Aguarde ou cancele a pesquisa em execução antes de restaurar a base.");
   const backup = backupSchema.parse(input);
-  if (backup.version === 2 && !backup.tables.ai_records) throw new Error("Backup inválido: ai_records ausente.");
+  if (backup.version >= 2 && !backup.tables.ai_records) throw new Error("Backup inválido: ai_records ausente.");
+  if (backup.version >= 3 && !backup.tables.library_documents) throw new Error("Backup inválido: library_documents ausente.");
+  for (const table of researchBackupTables) {
+    if (backup.version === 4 && !backup.tables[table]) throw new Error(`Backup inválido: ${table} ausente.`);
+    if (backup.version < 4) backup.tables[table] = [];
+  }
+  validateResearchBackup(backup.tables);
+  if (backup.version < 3) backup.tables.library_documents = [];
   if (backup.version === 1) backup.tables.findings.forEach((row) => { row.detail_json = row.detail_json ?? null; });
   backup.tables.ai_records ??= [];
+  for (const row of backup.tables.library_documents ?? []) {
+    const document = libraryBackupRowSchema.parse(row);
+    row.content_text = markdownText(document.markdown);
+  }
   for (const table of backupTables) {
     const expectedColumns = backupColumns[table] as readonly string[];
     const expectedColumnSet = new Set(expectedColumns);
@@ -637,6 +660,12 @@ export function restoreBackup(input: unknown) {
     }
     sqlite.prepare("DELETE FROM notes_fts").run();
     sqlite.prepare("INSERT INTO notes_fts (note_id,title,content) SELECT id,title,content_text FROM notes").run();
+    sqlite.prepare("DELETE FROM library_documents_fts").run();
+    sqlite.prepare("INSERT INTO library_documents_fts (document_id,title,content) SELECT id,title,content_text FROM library_documents").run();
+    sqlite.prepare("DELETE FROM research_chunks_fts").run();
+    sqlite.prepare("INSERT INTO research_chunks_fts (chunk_id,title,section,content) SELECT c.id,s.title,c.section,c.content FROM research_chunks c JOIN research_sources s ON s.id=c.source_id").run();
+    sqlite.prepare("UPDATE research_messages SET status='interrupted', error='Execução interrompida. Tente novamente manualmente.', completed_at=? WHERE status IN ('queued','running')").run(now());
   })();
+  clearResearchPreviews();
   return safetyPath;
 }

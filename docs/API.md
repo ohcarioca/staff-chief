@@ -7,7 +7,7 @@ Staff Chief exposes a small HTTP API to its own browser interface. It is an inte
 All routes are served from `http://127.0.0.1:3000` or `http://localhost:3000`.
 
 - Every request must use an allowed `Host` header.
-- `POST` requests must include a matching local `Origin` header.
+- Mutation requests, including `POST` and `PATCH`, must include a matching local `Origin` header.
 - There is no bearer token, session, or user account.
 - The API must not be exposed through a proxy, tunnel, or non-loopback interface.
 - JSON mutation bodies use `Content-Type: application/json`.
@@ -234,3 +234,27 @@ The browser interface requires confirmation before calling this endpoint. Direct
 - `{ action: "execute", operation: "improve" | "connections" | "deepen", previewId, sourceIds? }`: executes the reviewed context and returns `{ changes, objects, findings }`. Sources can only be removed. Draft source remains included for connections.
 
 Previews expire after 30 minutes. Oversized contexts, invalid sources, and duplicate in-flight executions are rejected. Draft edits do not save notes; accepted mention nodes go through `/api/notes` as before.
+
+
+## Library documents
+
+All library routes run locally in Node.js and use the existing Host/Origin checks. They never call the AI provider.
+
+| Method and path | Input | Result |
+| --- | --- | --- |
+| `GET /api/library/documents` | Optional `q` and `archived=true` (archived-only; default active-only) | Metadata array ordered by latest update, without full Markdown |
+| `POST /api/library/documents` | Multipart `file`, one file per request | `{ document, duplicate }`, status 201 for import or 200 for identical bytes |
+| `GET /api/library/documents/:id` | Stable document ID | Metadata and complete Markdown, including archived documents |
+| `PATCH /api/library/documents/:id` | JSON with required `revision`, optional `title`, `markdown`, `archived` | Updated document |
+| `GET /api/library/documents/:id/download` | Stable document ID | Saved UTF-8 Markdown attachment |
+
+Metadata includes `id`, `title`, `originalName`, `originalFormat`, `originalSize`, `warnings`, `revision`, `createdAt`, `updatedAt`, and nullable `archivedAt`. Title/content changes advance the revision; archive state changes preserve it. Stale updates return 409. Missing documents return 404; invalid conversion/input returns 400; size limits return 413. Unexpected internal errors return a generic 500 message.
+
+Uploads are limited to 20 MiB plus 64 KiB multipart overhead, checked against the actual request stream. Converted and edited Markdown is limited to 2,000,000 characters. The Next.js proxy buffer is configured to 21 MiB to accommodate valid uploads. Errors use `{ error }`; field validation may include `details`.
+
+The internal `getLibraryContext(ids)` service returns unique, explicitly selected active documents as `{ id, title, markdown, revision }` in one read transaction. Missing or archived sources fail explicitly. Research uses this service to prepare fixed source snapshots, then searches its own local chunk index.
+
+
+## Conversational research
+
+See [Conversational research](CONVERSATIONAL_RESEARCH.md) for fixed source versions, retrieval, message execution, local endpoints and backup version 4.

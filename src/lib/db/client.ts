@@ -33,6 +33,42 @@ function initialize(sqlite: Database.Database) {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS research_conversations (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS research_sources (
+      id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES research_conversations(id) ON DELETE CASCADE,
+      document_id TEXT NOT NULL, title TEXT NOT NULL, revision INTEGER NOT NULL, markdown TEXT NOT NULL,
+      UNIQUE(conversation_id, document_id)
+    );
+    CREATE TABLE IF NOT EXISTS research_chunks (
+      id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES research_conversations(id) ON DELETE CASCADE,
+      source_id TEXT NOT NULL REFERENCES research_sources(id) ON DELETE CASCADE,
+      start_offset INTEGER NOT NULL, end_offset INTEGER NOT NULL, section TEXT NOT NULL, content TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS research_chunks_conversation_idx ON research_chunks(conversation_id);
+    CREATE VIRTUAL TABLE IF NOT EXISTS research_chunks_fts USING fts5(
+      chunk_id UNINDEXED, title, section, content, tokenize='unicode61 remove_diacritics 2'
+    );
+    CREATE TABLE IF NOT EXISTS research_messages (
+      id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES research_conversations(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL, question TEXT NOT NULL, status TEXT NOT NULL,
+      context_json TEXT NOT NULL, answer_json TEXT, error TEXT, attempt INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL, completed_at TEXT, UNIQUE(conversation_id,request_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS research_messages_pending_uq ON research_messages(conversation_id)
+      WHERE status IN ('queued','running');
+    UPDATE research_messages SET status='interrupted', error='Execução interrompida. Tente novamente manualmente.',
+      completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status IN ('queued','running');
+    CREATE TABLE IF NOT EXISTS library_documents (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, original_name TEXT NOT NULL,
+      original_format TEXT NOT NULL, original_size INTEGER NOT NULL, file_hash TEXT NOT NULL UNIQUE,
+      markdown TEXT NOT NULL, content_text TEXT NOT NULL, warnings_json TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS library_documents_fts USING fts5(
+      document_id UNINDEXED, title, content, tokenize='unicode61 remove_diacritics 2'
+    );
     CREATE TABLE IF NOT EXISTS object_types (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, name_normalized TEXT NOT NULL UNIQUE,
       icon TEXT NOT NULL, color TEXT NOT NULL, created_at TEXT NOT NULL, archived_at TEXT

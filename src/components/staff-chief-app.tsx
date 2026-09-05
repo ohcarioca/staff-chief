@@ -15,11 +15,19 @@ const KnowledgeMap = dynamic(() => import("./knowledge-map").then((module) => mo
   loading: () => <div className="loading-row">Carregando mapa…</div>,
   ssr: false,
 });
+const LibraryView = dynamic(() => import("./library-view").then((module) => module.LibraryView), {
+  loading: () => <div className="loading-row">Carregando biblioteca…</div>,
+});
+const ResearchView = dynamic(() => import("./research-view").then((module) => module.ResearchView), {
+  loading: () => <div className="loading-row">Carregando pesquisa…</div>,
+});
 const RichNoteEditor = dynamic(() => import("./rich-note-editor").then((module) => module.RichNoteEditor), {
   loading: () => <div className="loading-row">Carregando editor…</div>,
 });
 
 const viewTitles: Record<ViewName, { title: string; subtitle: string }> = {
+  library: { title: "Biblioteca", subtitle: "Seus documentos de referência" },
+  research: { title: "Pesquisa", subtitle: "Perguntas com evidências da sua biblioteca" },
   dashboard: { title: "Visão geral", subtitle: "O que merece sua atenção agora" },
   map: { title: "Mapa", subtitle: "Relações explícitas e sinais emergentes" },
   notes: { title: "Notas", subtitle: "Sua memória gerencial, conectada" },
@@ -99,7 +107,7 @@ function Dashboard({ state, dateRange, onOpenRun, onNewNote, onGoToNotes, onComp
 
 function NotesList({ notes, selectedId, onSelect, onNew }: { notes: NoteRecord[]; selectedId: string | null; onSelect(id: string): void; onNew(): void }) {
   return <div className="notes-view">
-    <div className="view-toolbar"><div><span className="eyebrow">Biblioteca</span><strong>{notes.length} nota{notes.length === 1 ? "" : "s"}</strong></div><button className="primary-button compact" onClick={onNew}><Plus size={15} /> Nova</button></div>
+    <div className="view-toolbar"><div><span className="eyebrow">Notas</span><strong>{notes.length} nota{notes.length === 1 ? "" : "s"}</strong></div><button className="primary-button compact" onClick={onNew}><Plus size={15} /> Nova</button></div>
     {notes.length ? <div className="note-list">{notes.map((note) => <button key={note.id} className={selectedId === note.id ? "note-row is-selected" : "note-row"} onClick={() => onSelect(note.id)}><div className="note-row-top"><strong>{note.title || note.contentText.slice(0, 54) || "Nota sem título"}</strong><time>{relativeDate(note.updatedAt)}</time></div><p>{note.contentText || "Sem conteúdo"}</p><div className="note-tags">{note.mentions.slice(0, 4).map((object) => <span key={object.id} style={{ "--tag-color": object.typeColor } as React.CSSProperties}>{object.typeIcon} {object.name}</span>)}{note.mentions.length > 4 && <span>+{note.mentions.length - 4}</span>}</div></button>)}</div>
       : <div className="center-empty"><div className="empty-orbit">✎</div><h2>Capture o que está na sua cabeça</h2><p>Uma nota rápida pode virar contexto valioso amanhã.</p><button className="primary-button" onClick={onNew}><Plus size={15} /> Criar primeira nota</button></div>}
   </div>;
@@ -195,6 +203,10 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(initialState.objectTypes[0]?.id ?? null);
   const [isNewNote, setIsNewNote] = useState(false);
   const [editorDirty, setEditorDirty] = useState(false);
+  const [libraryDirty, setLibraryDirty] = useState(false);
+  const [researchDirty, setResearchDirty] = useState(false);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryKey, setLibraryKey] = useState(0);
   const [composerDirty, setComposerDirty] = useState(false);
   const [typeFormOpen, setTypeFormOpen] = useState(false);
   const [typeName, setTypeName] = useState("");
@@ -228,7 +240,7 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   }, [search]);
 
   useEffect(() => {
-    if (view === "objects") return;
+    if (view === "objects" || view === "library" || view === "research") return;
     const timer = setTimeout(() => { void refresh(search); }, 220);
     return () => clearTimeout(timer);
   }, [search, refresh, view]);
@@ -259,7 +271,8 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   const currentViewTitle = view === "objects" && selectedType ? { title: selectedType.name, subtitle: "Objetos" } : viewTitles[view];
 
   const guardUnsaved = () => {
-    const dirty = view === "notes" ? editorDirty : view === "dashboard" ? composerDirty : false;
+    if (view === "library" && libraryBusy) { setNotice("Aguarde a importação ou o salvamento terminar."); return false; }
+    const dirty = view === "research" ? researchDirty : view === "library" ? libraryDirty : view === "notes" ? editorDirty : view === "dashboard" ? composerDirty : false;
     return !dirty || window.confirm("Há alterações não salvas. Descartar e continuar?");
   };
   const changeView = (next: ViewName) => {
@@ -311,10 +324,12 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
   };
 
   const restore = async (file: File) => {
+    if (!guardUnsaved()) return;
     if (!window.confirm("A restauração substituirá a base atual. Um backup de segurança será criado automaticamente. Continuar?")) return;
     try {
       const payload = JSON.parse(await file.text());
       const result = await readJson(await fetch("/api/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }));
+      setLibraryKey((value) => value + 1);
       await refresh(""); setSearch(""); setSelectedNoteId(null); setSelectedObjectId(null); setSelectedTypeId(null); setNotice(`Base restaurada. Cópia de segurança: ${result.safetyBackup}`);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Arquivo de backup inválido."); }
   };
@@ -363,6 +378,8 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
       <div className="brand"><div className="brand-mark"><BrainCircuit size={20} /></div><div className="brand-copy"><strong>Staff Chief</strong><span>segundo cérebro</span></div></div>
       <button className="new-note-button" onClick={newNote} title="Nova nota"><Plus size={17} /><span className="sidebar-label">Nova nota</span></button>
       <nav className="main-nav" aria-label="Navegação principal">
+        <button title="Pesquisa" className={view === "research" ? "is-active" : ""} onClick={() => changeView("research")}><Search size={17} /><span className="sidebar-label">Pesquisa</span></button>
+        <button title="Biblioteca" className={view === "library" ? "is-active" : ""} onClick={() => changeView("library")}><FileText size={17} /><span className="sidebar-label">Biblioteca</span></button>
         <button title="Dashboard" className={view === "dashboard" ? "is-active" : ""} onClick={() => changeView("dashboard")}><LayoutDashboard size={17} /><span className="sidebar-label">Dashboard</span></button>
         <button title="Mapa" className={view === "map" ? "is-active" : ""} onClick={() => changeView("map")}><MapIcon size={17} /><span className="sidebar-label">Mapa</span><span className="sidebar-count">{state.objects.length}</span></button>
         <button title="Notas" className={view === "notes" ? "is-active" : ""} onClick={() => changeView("notes")}><FileText size={17} /><span className="sidebar-label">Notas</span><span className="sidebar-count">{state.notes.length}</span></button>
@@ -374,8 +391,10 @@ export function StaffChiefApp({ initialState }: { initialState: AppState }) {
     </aside>
 
     <section className="workspace">
-      <header className="topbar"><div><span className="eyebrow">{currentViewTitle.subtitle}</span><h1>{currentViewTitle.title}</h1></div><div className="topbar-tools"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === "objects" ? "Buscar objetos…" : "Buscar notas…"} />{search && <button onClick={() => setSearch("")} aria-label="Limpar"><X size={13} /></button>}</label></div></header>
+      <header className="topbar"><div><span className="eyebrow">{currentViewTitle.subtitle}</span><h1>{currentViewTitle.title}</h1></div><div className="topbar-tools"><label className="search-box"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === "library" ? "Buscar documentos…" : view === "objects" ? "Buscar objetos…" : "Buscar notas…"} />{search && <button onClick={() => setSearch("")} aria-label="Limpar"><X size={13} /></button>}</label></div></header>
       <div className="center-pane">
+        {view === "library" && <LibraryView key={libraryKey} search={search} onDirtyChange={setLibraryDirty} onBusyChange={setLibraryBusy} />}
+        {view === "research" && <ResearchView key={libraryKey} onDirtyChange={setResearchDirty} />}
         {returnAnalysis && <div className="analysis-return"><span>Consultando uma fonte da análise</span><button className="secondary-button" onClick={() => { if (guardUnsaved()) void openReport(returnAnalysis.runId, returnAnalysis.findingId); }}>Voltar à sugestão</button></div>}
         {view === "dashboard" && <Dashboard state={state} dateRange={dateRange} onOpenRun={(runId) => void openReport(runId)} onNewNote={newNote} onGoToNotes={() => changeView("notes")} onComposerDirty={setComposerDirty} onComposerSaved={() => { void refresh(); setNotice("Nota adicionada."); }} onSelectObject={selectObject} />}
         {view === "map" && <KnowledgeMap state={state} selectedObjectId={selectedObjectId} onSelectObject={setSelectedObjectId} />}

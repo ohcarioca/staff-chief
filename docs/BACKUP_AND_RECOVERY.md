@@ -12,8 +12,9 @@ An export contains all rows from the primary application tables, including:
 - relationships;
 - analysis runs and step outputs;
 - findings and source references.
+- AI records and active/archived library documents, including edited Markdown, import metadata, conversion warnings and revision numbers. Original uploaded files are not retained.
 
-The derived FTS5 index is omitted because it can be rebuilt from note data. Codex credentials and application dependencies are never included.
+The derived FTS5 indexes are omitted because they can be rebuilt from notes and documents. Codex credentials and application dependencies are never included.
 
 The downloaded filename follows this pattern:
 
@@ -38,7 +39,7 @@ Restore is destructive to the current logical dataset, so the UI requires confir
 2. Checkpoints the SQLite WAL.
 3. Copies the current database into the local `backups` directory.
 4. Replaces primary table contents in a transaction.
-5. Rebuilds `notes_fts` from restored notes.
+5. Rebuilds `notes_fts`, `library_documents_fts` and `research_chunks_fts` from restored content.
 6. Returns the safety-copy path to the UI.
 
 If a database transaction fails, SQLite rolls back the table replacement. The safety copy remains available.
@@ -79,7 +80,7 @@ If company data is involved, ask the appropriate IT or data-recovery team to per
 
 ## Compatibility
 
-The current export format is version `1`. Restore rejects other versions. Future schema changes must either preserve version 1 compatibility or introduce an explicit migration path and new format version.
+The current export format is version `4`, including research conversations, immutable sources, chunks and messages. Versions `1` through `3` remain supported and restore an empty research history; versions `1` and `2` also restore an empty library. A safety copy preserves the previous dataset. Restore is blocked while a research response is queued/running. Restored unfinished responses become interrupted and require manual retry; no AI request runs automatically. Document metadata and research references/context are validated before replacement, and derived indexes are rebuilt.
 
 ## Backup strategy
 

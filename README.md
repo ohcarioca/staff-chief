@@ -2,7 +2,7 @@
 
 Staff Chief is a local-first management knowledge base for capturing notes, connecting people, projects, ideas, and custom object types, and running deliberate AI-assisted reviews through the locally authenticated Codex CLI.
 
-The application is designed for one person on one Windows workstation. It listens only on `127.0.0.1`, stores its database locally, performs no background analysis, and requires an explicit preview and confirmation before any note content is sent to Codex.
+The application is designed for one person on one Windows workstation. It listens only on `127.0.0.1`, stores its database locally, performs no background analysis, and requires an explicit preview and confirmation before any note content is sent to Codex. Research conversations confirm library sources once; each Send authorizes the question, recent history and retrieved excerpts.
 
 > **Project status:** MVP under active development. The user interface is in Brazilian Portuguese; source code and documentation are in English.
 
@@ -14,6 +14,8 @@ The application is designed for one person on one Windows workstation. It listen
 - Displays a 2D knowledge graph with co-occurrences, confirmed relationships, and pending AI suggestions.
 - Lists objects by custom type and keeps references stable when objects are renamed.
 - Searches notes locally with SQLite FTS5.
+- Imports TXT, Markdown, DOCX and text-based PDF files into an editable local document library with full-text search, archival and Markdown downloads.
+- Saves research conversations including all active notes and optional library documents, with fixed source snapshots, local excerpt retrieval and validated citations through Codex.
 - Runs one context-efficient macro analysis across selected lenses, with quoted evidence and recurring finding history.
 - Offers manual draft improvement, local object suggestions and separately confirmed connection searches.
 - Preserves immutable analysis snapshots and source references without changing notes automatically.
@@ -35,7 +37,7 @@ Read [Security and privacy](docs/SECURITY_AND_PRIVACY.md) before using the appli
 ## Requirements
 
 - Windows 10 or 11
-- Node.js 22 or newer
+- Node.js 22.13 or newer
 - pnpm
 - Codex CLI installed and authenticated for AI analysis
 
@@ -116,6 +118,7 @@ pnpm build
 - [Architecture](docs/ARCHITECTURE.md)
 - [Local API reference](docs/API.md)
 - [Data model](docs/DATA_MODEL.md)
+- [Conversational research](docs/CONVERSATIONAL_RESEARCH.md)
 - [AI analysis](docs/AI_ANALYSIS.md)
 - [AI test data](docs/AI_TEST_DATA.md)
 - [Security and privacy](docs/SECURITY_AND_PRIVACY.md)
@@ -128,7 +131,7 @@ pnpm build
 
 ## Scope
 
-The MVP intentionally excludes authentication, remote hosting, cloud synchronization, database merging, attachments, calendar integration, notifications, external imports, embeddings, and autonomous background actions.
+The MVP intentionally excludes authentication, remote hosting, cloud synchronization, database merging, original-file attachments, calendar integration, notifications, OCR, whole-document synthesis, embeddings, and autonomous background actions. Document conversion is local; only Markdown and metadata are retained.
 
 ## License
 

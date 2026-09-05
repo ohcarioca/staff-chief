@@ -73,7 +73,7 @@ describe("local knowledge base", () => {
   it("exports and restores a versioned database with a safety copy", () => {
     const backup = exportBackup();
     const safetyPath = restoreBackup(backup);
-    expect(backup.version).toBe(2);
+    expect(backup.version).toBe(4);
     expect(fs.existsSync(safetyPath)).toBe(true);
     expect(getAppState().notes).toHaveLength(2);
   });

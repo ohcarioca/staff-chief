@@ -26,3 +26,8 @@ This directory contains the operational and technical documentation for Staff Ch
 Documentation and source code are written in English. User-facing application copy is written in Brazilian Portuguese (`pt-BR`). Examples may include Portuguese UI labels when they identify an exact control.
 
 Documentation must describe shipped behavior. Proposed functionality belongs in an issue or design document and must be labeled as planned work.
+
+
+## Conversational research
+
+See [Conversational research](CONVERSATIONAL_RESEARCH.md) for fixed source versions, retrieval, message execution, local endpoints and backup version 4.

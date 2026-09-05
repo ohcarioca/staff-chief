@@ -65,7 +65,7 @@ Before storing company information:
 4. Keep Windows, Node.js, pnpm, Codex CLI, and dependencies patched according to company policy.
 5. Do not configure port forwarding, reverse proxies, tunnels, or firewall exceptions for the app.
 6. Store exported backups only in approved locations.
-7. Review the exact snapshot before every AI submission.
+7. Review the exact snapshot before each analysis submission. For research, confirm the fixed sources at conversation creation and review the Send notice for each question.
 8. Stop the server when the application is not in use on a shared or unattended machine.
 
 ## Data minimization
@@ -82,3 +82,10 @@ Staff Chief does not implement application telemetry, analytics, crash reporting
 ## Vulnerability reporting
 
 See the repository-level [security policy](../SECURITY.md). Do not place secrets, sensitive notes, or exploit details in a public issue.
+
+
+## Document library
+
+Document conversion, indexing, reading and editing run locally and never call Codex. Imported Markdown is rendered with raw HTML disabled; images are replaced with placeholders and cannot trigger remote image requests. Only HTTP(S) and mail links are clickable, and external links open with opener isolation. DOCX conversion disables external file access and omits images. PDF text extraction does not execute document actions or use OCR.
+
+The library retains only Markdown and metadata in the local database and version 4 backups. Original files are not preserved. Import limits are 20 MiB per file and 2 million converted characters. Research conversations explicitly confirm and capture all active notes and optional selected library documents once. Each Send authorizes the question, recent history and retrieved excerpts from those fixed sources. Importing a file itself is not AI submission authorization. See [Conversational research](CONVERSATIONAL_RESEARCH.md).

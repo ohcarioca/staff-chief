@@ -123,3 +123,16 @@ Select text to limit the scope, then click **Melhorar**. Review the captured blo
 **Buscar conexoes** is a separate operation for up to three connections to other notes. Review and remove candidate sources before confirming. These suggestions do not create confirmed relationships.
 
 For broader review, **Analisar notas** starts with connections selected. All selected objectives share one call. Full review is the default; **Opções avançadas** offers review of changed notes and related history. Edit note selection in configuration, then inspect the frozen excerpts before confirming. **Pedir mais detalhes** prepares a separately confirmed call and uses the same next-step, explanation and evidence layout. Recurring findings preserve earlier resolved/dismissed decisions.
+
+
+## Document library
+
+Open **Biblioteca** in the sidebar and click **Importar arquivos**, or drop files into the upload area. Supported formats are TXT, MD, DOCX and PDF with extractable text. Each file may be up to 20 MB; converted content is limited to 2 million characters. Uploads run sequentially, with independent results so a failed file does not block the others. Import does not start Codex or send content outside the workstation.
+
+Only converted Markdown and original-file metadata are stored. Keep original files separately. TXT accepts UTF-8 or BOM-marked UTF-16 and preserves literal text; Markdown retains its markup. DOCX preserves supported structure and tables. PDF text is grouped by page; layout and table extraction can differ from the original. OCR and password-protected PDFs are not supported. Conversion warnings appear above the reader.
+
+Search the library by title or content. Open a document, choose **Editar Markdown**, correct the title or text, and click **Salvar**. **Visualizar** previews unsaved changes; **Baixar .md** downloads the saved version. Leaving with pending edits asks before discarding them. The editor detects conflicting revisions from another window. There is no revision history.
+
+**Arquivar** removes a document from active results. Enable **Arquivados** to find it and use **Restaurar** to reactivate it. Reimporting identical bytes opens the existing document without overwriting edits, even if archived. Different content with the same filename creates a separate document.
+
+Documents remain separate from notes and the map. Open **Pesquisa** to create a saved conversation containing all active notes and optional selected library documents. Existing conversations preserve their original sources; create a new conversation to include current notes. See [Conversational research](CONVERSATIONAL_RESEARCH.md) for consent, citations and execution details.

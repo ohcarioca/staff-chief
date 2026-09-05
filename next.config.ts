@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["better-sqlite3"],
+  experimental: { proxyClientMaxBodySize: "21mb" },
+  serverExternalPackages: ["better-sqlite3", "pdfjs-dist", "mammoth"],
 };
 
 export default nextConfig;

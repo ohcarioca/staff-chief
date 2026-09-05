@@ -117,3 +117,15 @@ An idempotent startup migration adds nullable `findings.detail_json` and creates
 `ai_records` has `id`, `kind`, `data_json`, `created_at`: report occurrences preserve historical finding text and evidence, while baseline records track included note versions. Canonical findings can belong to their latest run while report occurrences preserve older presentations. Lifecycle status is read from the canonical finding.
 
 Version 2 exports include this table and detail column. Version 1 imports default missing detail to null and AI records to empty. Existing safety-copy and transaction behavior is retained. Draft previews, block caches and response caches are bounded in-memory data, not part of backup.
+
+
+## Library storage
+
+`library_documents` is independent of notes and objects. It stores a stable UUID, title, original name/format/byte size, unique SHA-256 of the original bytes, Markdown, derived searchable text, JSON conversion warnings, revision, creation/update timestamps and nullable archival timestamp. The original binary file is discarded after conversion. Schema initialization adds this table without recreating existing tables.
+
+`library_documents_fts` indexes document ID, title and derived text using FTS5 Unicode tokenization with accent removal. Import and updates maintain it transactionally. Backup versions 3 and 4 include document rows and reconstruct this derived index on restore. No original attachments, embeddings or vector index are stored.
+
+
+## Conversational research
+
+See [Conversational research](CONVERSATIONAL_RESEARCH.md) for fixed source versions, retrieval, message execution, local endpoints and backup version 4.

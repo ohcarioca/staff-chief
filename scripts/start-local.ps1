@@ -6,13 +6,13 @@ function Require-Command([string]$Name, [string]$Help) {
   }
 }
 
-Require-Command "node" "Install Node.js 22 or newer."
+Require-Command "node" "Install Node.js 22.13 or newer."
 Require-Command "pnpm" "Install it with: npm install -g pnpm"
 Require-Command "codex" "Open Codex once and complete sign-in before analyzing notes."
 
-$nodeMajor = [int]((& node --version).TrimStart("v").Split(".")[0])
-if ($nodeMajor -lt 22) {
-  throw "Staff Chief requires Node.js 22 or newer."
+$staffChiefNodeVersion = [version]((& node --version).TrimStart("v"))
+if ($staffChiefNodeVersion -lt [version]"22.13.0") {
+  throw "Staff Chief requires Node.js 22.13 or newer."
 }
 
 $projectDirectory = Split-Path -Parent $PSScriptRoot

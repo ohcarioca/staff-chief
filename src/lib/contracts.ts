@@ -1,4 +1,4 @@
-export type ViewName = "dashboard" | "map" | "notes" | "objects";
+export type ViewName = "dashboard" | "map" | "notes" | "objects" | "library" | "research";
 export type AnalysisScopeType = "note" | "object" | "collection";
 export type AnalysisScope = { type: AnalysisScopeType; id: string };
 export type AnalysisDateRange = { start: string; end: string };
