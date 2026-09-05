@@ -67,11 +67,13 @@ The graph is a projection, not a separate persistence model:
 
 Accepting a supported connection finding inserts a relationship with `origin = 'analysis'`, links it to the finding, and marks the finding resolved.
 
+Analysis run scopes are `note`, `object`, or `collection`. Collection snapshots preserve the dashboard calendar range and the exact selected note IDs inside the immutable snapshot JSON.
+
 ## Analysis lifecycle
 
 Run states are `queued`, `running`, `completed`, `partial`, `failed`, or `cancelled`.
 
-Step states are `queued`, `running`, `completed`, `failed`, or `cancelled`. A run contains only the specialists selected by the user plus a final `consolidation` step.
+Step states are `queued`, `running`, `completed`, `failed`, or `cancelled`. New runs contain one `macro` step and store selected lenses in the immutable snapshot. Legacy runs retain their original steps.
 
 Finding states are:
 
@@ -85,7 +87,7 @@ Notes, objects, relationships, and object types have archival fields. The curren
 
 ## Backup format
 
-Version 1 exports the nine primary tables under a top-level object:
+Version 2 adds `findings.detail_json` and `ai_records` to the primary tables; version 1 remains importable. The legacy version 1 example below shows the original nine tables under a top-level object:
 
 ```json
 {
@@ -106,3 +108,12 @@ Version 1 exports the nine primary tables under a top-level object:
 ```
 
 The FTS table is rebuilt from `notes` after restore.
+
+
+## AI metadata and compatibility
+
+An idempotent startup migration adds nullable `findings.detail_json` and creates `ai_records`. Finding detail contains quoted evidence, impact, limitations, priority rationale, qualitative evidence strength and an optional previous-finding reference. Legacy confidence remains stored for compatibility but is not shown as calibrated probability.
+
+`ai_records` has `id`, `kind`, `data_json`, `created_at`: report occurrences preserve historical finding text and evidence, while baseline records track included note versions. Canonical findings can belong to their latest run while report occurrences preserve older presentations. Lifecycle status is read from the canonical finding.
+
+Version 2 exports include this table and detail column. Version 1 imports default missing detail to null and AI records to empty. Existing safety-copy and transaction behavior is retained. Draft previews, block caches and response caches are bounded in-memory data, not part of backup.

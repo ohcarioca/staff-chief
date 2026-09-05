@@ -106,31 +106,41 @@ Soft-deletes an active note, object, or object type.
 
 ### `POST /api/analysis/preview`
 
-Builds and returns a candidate snapshot locally. This endpoint does not start Codex.
+Builds and returns a candidate snapshot locally, including `prepared` (preview ID, internal size status and notice). Accepts optional `analysisTypes` (default connections) and `mode` (`full` or `incremental`). This endpoint does not start Codex.
 
 ```json
 {
-  "scopeType": "note",
-  "scopeId": "note-id"
+  "scopeType": "collection",
+  "scopeId": "general",
+  "selectedNoteIds": ["note-1", "note-2"],
+  "dateRange": {
+    "start": "2026-09-01",
+    "end": "2026-09-30"
+  }
 }
 ```
 
-`scopeType` is `note` or `object`.
+`scopeType` is `note`, `object`, or `collection`. Collection previews require one to 50 selected note IDs. `dateRange` is optional for item scopes and records the dashboard filter for collection scopes.
 
 ### `POST /api/analysis/run`
 
-Rebuilds the final snapshot from the allowed note selection, stores the run, schedules the selected specialists, and returns status `202`.
+Uses the frozen `previewId` from preview, checks the selected subset and internal context limit, stores the snapshot, and starts one macro step. Returns status `202`. Preview context cannot be extended or have its lenses changed at execution time.
 
 ```json
 {
-  "scopeType": "note",
-  "scopeId": "note-id",
-  "selectedNoteIds": ["note-id"],
+  "scopeType": "collection",
+  "scopeId": "selection",
+  "previewId": "preview-id-from-previous-response",
+  "selectedNoteIds": ["note-1", "note-2"],
+  "dateRange": {
+    "start": "2026-09-01",
+    "end": "2026-09-30"
+  },
   "analysisTypes": ["risks", "gaps"]
 }
 ```
 
-`selectedNoteIds` accepts at most 50 IDs and is intersected with the candidate subgraph. `analysisTypes` is an optional non-empty subset of:
+`selectedNoteIds` accepts one to 50 IDs. For item scopes, IDs are intersected with the candidate subgraph. For collection scopes, IDs are intersected with the active notes inside `dateRange`. `analysisTypes` is an optional non-empty subset of:
 
 - `connections`
 - `risks`
@@ -138,7 +148,7 @@ Rebuilds the final snapshot from the allowed note selection, stores the run, sch
 - `gaps`
 - `follow_ups`
 
-Omitting `analysisTypes` runs every specialist. Consolidation is always added.
+Set `analysisTypes` during preview. Omitting it selects connections. The frozen selection is authoritative at execution; no consolidation is added to new runs.
 
 Response:
 
@@ -166,7 +176,7 @@ Aborts an analysis process that is active in the current server process.
 
 ### `POST /api/analysis/:id/retry`
 
-Queues failed specialists and consolidation for a manual retry. Returns status `202`. It rejects runs that do not exist or contain no failed step.
+Retries the failed macro step, or failed specialists and consolidation for legacy runs. Returns status `202`. It rejects runs that do not exist or contain no failed step.
 
 ### `POST /api/findings/:id`
 
@@ -209,3 +219,14 @@ Validates and restores a versioned JSON backup after creating a local safety cop
 ```
 
 The browser interface requires confirmation before calling this endpoint. Direct API clients are responsible for their own explicit confirmation.
+
+
+## Draft assistance and deepening
+
+`POST /api/assistance` supports three actions:
+
+- `{ action: "preview", operation: "improve" | "connections", title, noteId?, blocks: [{ id, text, protected }] }`: prepares a frozen context and returns `AiPreview`; no model call.
+- `{ action: "deepen", findingId }`: prepares preserved evidence for optional deepening; no model call.
+- `{ action: "execute", operation: "improve" | "connections" | "deepen", previewId, sourceIds? }`: executes the reviewed context and returns `{ changes, objects, findings }`. Sources can only be removed. Draft source remains included for connections.
+
+Previews expire after 30 minutes. Oversized contexts, invalid sources, and duplicate in-flight executions are rejected. Draft edits do not save notes; accepted mention nodes go through `/api/notes` as before.

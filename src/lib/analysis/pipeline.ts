@@ -6,14 +6,17 @@ import {
   getRunSnapshot,
   getStepOutputs,
   replaceFindings,
+  saveMacroReport,
   updateRun,
   updateStep,
 } from "@/lib/db/repository";
 import { CodexCliProvider } from "./codex-provider";
 import type { SpecialistName } from "./provider";
+import { executeMacro } from "./assistance";
 
 const specialists: SpecialistName[] = ["connections", "risks", "contradictions", "gaps", "follow_ups"];
-const controllers = new Map<string, AbortController>();
+const runtime = globalThis as unknown as { staffChiefAnalysisControllers?: Map<string, AbortController> };
+const controllers = runtime.staffChiefAnalysisControllers ??= new Map<string, AbortController>();
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
@@ -39,6 +42,19 @@ async function executePipeline(runId: string, retryOnly: boolean) {
   try {
     updateRun(runId, "running");
     const existing = getAnalysisRun(runId);
+    if (existing?.steps?.some((step) => step.name === "macro")) {
+      updateStep(runId, "macro", "running");
+      try {
+        const result = await executeMacro(snapshot, controller.signal);
+        saveMacroReport(runId, result.findings);
+        updateStep(runId, "macro", "completed", { output: result });
+        updateRun(runId, "completed");
+      } catch (error) {
+        updateStep(runId, "macro", controller.signal.aborted ? "cancelled" : "failed", { error: errorMessage(error) });
+        throw error;
+      }
+      return;
+    }
     const runSpecialists = specialists.filter((specialist) => existing?.steps?.some((step) => step.name === specialist));
     const failedNames = new Set(existing?.steps?.filter((step) => step.status === "failed").map((step) => step.name) ?? []);
     for (const specialist of runSpecialists) {
@@ -86,7 +102,7 @@ async function executePipeline(runId: string, retryOnly: boolean) {
 
 export function startAnalysis(runId: string, retryOnly = false) {
   if (controllers.has(runId)) throw new Error("Esta análise já está em execução.");
-  setImmediate(() => { void executePipeline(runId, retryOnly); });
+  void executePipeline(runId, retryOnly);
 }
 
 export function cancelAnalysis(runId: string) {
@@ -100,6 +116,6 @@ export function retryAnalysis(runId: string) {
   const run = getAnalysisRun(runId);
   if (!run) throw new Error("Análise não encontrada.");
   if (!run.steps?.some((step) => step.status === "failed")) throw new Error("Não há etapas com falha para repetir.");
-  updateStep(runId, "consolidation", "queued", { error: null });
+  updateStep(runId, run.steps?.some((step) => step.name === "macro") ? "macro" : "consolidation", "queued", { error: null });
   startAnalysis(runId, true);
 }

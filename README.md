@@ -14,7 +14,8 @@ The application is designed for one person on one Windows workstation. It listen
 - Displays a 2D knowledge graph with co-occurrences, confirmed relationships, and pending AI suggestions.
 - Lists objects by custom type and keeps references stable when objects are renamed.
 - Searches notes locally with SQLite FTS5.
-- Runs user-selected AI specialists for connections, risks, contradictions, gaps, and follow-ups.
+- Runs one context-efficient macro analysis across selected lenses, with quoted evidence and recurring finding history.
+- Offers manual draft improvement, local object suggestions and separately confirmed connection searches.
 - Preserves immutable analysis snapshots and source references without changing notes automatically.
 - Exports and restores versioned JSON backups, with an automatic safety copy before restore.
 
@@ -75,8 +76,8 @@ For repeatable AI evaluation, generate the synthetic isolated dataset described 
 
 ## AI analysis flow
 
-1. Select a note or object and choose one or more analysis lenses.
-2. Review the locally assembled subgraph and select up to 50 notes.
+1. Analyze a specific note or object, or use the dashboard to analyze multiple notes from the active calendar period.
+2. Choose every note in the period or a manual selection of up to 50 notes, then review the locally assembled snapshot.
 3. Confirm the exact context to send.
 4. Staff Chief runs the selected specialists sequentially, followed by consolidation.
 5. Structured outputs are validated against the immutable snapshot before they are stored.

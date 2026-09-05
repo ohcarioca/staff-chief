@@ -2,6 +2,28 @@
 
 Staff Chief uses the locally installed Codex CLI as an explicit, user-initiated analysis provider. The application does not schedule analyses or retry failed work in the background.
 
+## Current economical workflow
+
+New runs use one `macro` step, without specialist fan-out or consolidation. The default lens is connections; users can enable the other lenses in the same call. Legacy reports remain readable and legacy failed steps can still be retried manually.
+
+Local ranking combines text terms, existing objects, confirmed relationships and a reserved portion of candidates from other projects. The preview shows up to 20 notes as excerpts, their dates, object context and relevant historical finding titles/statuses. It does not promise exhaustive coverage. Collection candidates remain within the selected calendar-constrained set; note/object scopes may offer additional relevant notes as bridges. Users can remove candidates. No embeddings or AI-generated indexing summaries are used.
+
+The server freezes previews for 30 minutes. Execution requires the returned preview ID and accepts only a subset of reviewed sources. Oversized contexts are rejected before starting the executor. Internal byte limits protect each operation from sending an unnecessarily broad context; they are implementation safeguards and are not shown as token or cost estimates.
+
+Full review analyzes the selected context. Incremental review prioritizes changed notes and related history using saved version markers. A scope with no changes requests a full review instead of making another call. A note marker records the version of an included excerpt, not proof that every statement in the full note has been analyzed.
+
+Each current finding has literal evidence quotes, impact, limitations, a priority justification, and qualitative evidence strength. Invalid evidence is rejected. Connection findings require two note sources. Quotation matching establishes textual provenance, not semantic correctness. Matching earlier findings reuse the canonical ID and lifecycle state; historical report occurrences retain their original text/evidence. Discarded findings are not automatically reopened.
+
+## Draft assistance
+
+Existing object-name suggestions run locally while typing. `Melhorar` prepares the selected text or current draft, then requires confirmation for one call. Results contain up to five block changes and five object suggestions. Protected blocks containing mentions or rich marks are not rewritten. Number changes are rejected; semantic changes still require user review. Accepted edits remain unsaved and can be undone. A changed draft invalidates pending suggestions.
+
+`Buscar conexoes` is separate: it selects at most five related notes, shows their excerpts before confirmation, and returns at most three connections. `Aprofundar` uses preserved finding sources for one optional call and returns at most one expanded finding. Neither operation confirms relationships automatically.
+
+Identical requests reuse a bounded server-session cache keyed by content, source versions, operation and configuration. Concurrent duplicate requests are rejected. Failed requests are not automatically retried. The product does not calculate or display token consumption; efficiency comes from local retrieval, compact excerpts, one macro call, incremental review and optional deepening.
+
+See [AI evaluation](AI_EVALUATION.md) for read-only comparison of legacy/current reports and human quality ratings. Simulated integration tests do not establish model quality.
+
 ## Analysis lenses
 
 The launcher lets the user select any non-empty combination of:
@@ -14,7 +36,7 @@ The launcher lets the user select any non-empty combination of:
 | Gaps                          | Identify missing context, ownership, criteria, decisions, or data           | `gap`            |
 | Follow-ups                    | Propose specific next actions grounded in the notes                         | `follow_up`      |
 
-A consolidation step always follows the selected specialists.
+All selected lenses share one macro call for new runs. The legacy pipeline has a consolidation step.
 
 ## Consent boundary
 
@@ -37,6 +59,8 @@ For a note scope, Staff Chief includes the selected note, its mentioned objects,
 
 For an object scope, Staff Chief includes the object, active notes that mention it, and the other objects mentioned by those notes.
 
+For a dashboard collection scope, Staff Chief first restricts active notes by the dashboard calendar range. The user can analyze every note in that period or select a subset manually. The server reapplies both the date range and selected note IDs when it builds the final snapshot. If a period contains more than 50 notes, the user must narrow the period or use manual selection.
+
 After the user selects notes, the final snapshot contains only:
 
 - selected note IDs, titles, extracted text, timestamps, and object IDs;
@@ -45,9 +69,11 @@ After the user selects notes, the final snapshot contains only:
 
 The snapshot is stored immutably with the run before execution.
 
-## Codex CLI execution
+Collection snapshots also store the calendar range used to assemble them.
 
-For every step, the provider:
+## Codex CLI execution and legacy specialist compatibility
+
+The shared provider uses the existing ephemeral, read-only CLI executor. Legacy specialist calls follow these steps:
 
 1. Creates an empty temporary directory.
 2. Writes a JSON Schema for the expected output.
@@ -67,7 +93,7 @@ The application does not copy, inspect, or persist Codex credentials. `CODEX_BIN
 
 ## Output validation
 
-Each specialist may return up to 20 findings. The provider enforces:
+In preserved legacy runs, each specialist may return up to 20 findings. The provider enforces:
 
 - a known finding category;
 - title, explanation, and suggested-action length limits;
@@ -77,7 +103,7 @@ Each specialist may return up to 20 findings. The provider enforces:
 
 Specialist steps are forced to their assigned category. Source IDs not present in the submitted snapshot are removed, and findings with no valid source are discarded.
 
-Consolidation receives successful specialist outputs and the same snapshot. It deduplicates conclusions while preserving meaningful disagreements. If consolidation fails, Staff Chief applies a deterministic fallback deduplication to the successful specialist results.
+Legacy consolidation receives successful specialist outputs and the same snapshot. It deduplicates conclusions while preserving meaningful disagreements. If consolidation fails, Staff Chief applies a deterministic fallback deduplication to the successful specialist results.
 
 ## Progress and status
 
@@ -88,7 +114,7 @@ The browser receives run updates through Server-Sent Events. A run may become:
 - `failed`: orchestration failed before a usable report was produced;
 - `cancelled`: the user cancelled the active run.
 
-A specialist failure does not stop later specialists. Manual retry repeats only failed specialists and consolidation. Staff Chief never retries automatically.
+A macro failure marks its single step failed. For legacy runs, a specialist failure does not stop later specialists. Manual retry repeats the failed macro step, or failed legacy specialists and consolidation. Staff Chief never retries automatically.
 
 ## Findings and knowledge changes
 

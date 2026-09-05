@@ -5,6 +5,8 @@ import path from "node:path";
 import { z } from "zod";
 import type {
   AnalysisRunRecord,
+  AnalysisDateRange,
+  AnalysisScopeType,
   AnalysisSnapshot,
   AnalysisType,
   AppState,
@@ -19,6 +21,7 @@ import type {
   SpecialistFinding,
 } from "@/lib/contracts";
 import { getDataDirectory, getDatabase, normalizeName } from "./client";
+import { getAiRecord, putAiRecord } from "./ai-store";
 
 type Row = Record<string, unknown>;
 
@@ -92,6 +95,7 @@ function mapFinding(row: Row): FindingRecord {
     status: String(row.status) as FindingStatus,
     ...getSources(String(row.id)),
     createdAt: String(row.created_at),
+    detail: json(row.detail_json, undefined),
   };
 }
 
@@ -156,7 +160,7 @@ function recentRuns() {
   return (sqlite.prepare("SELECT * FROM analysis_runs ORDER BY created_at DESC LIMIT 8").all() as Row[])
     .map((row): AnalysisRunRecord => ({
       id: String(row.id), provider: String(row.provider),
-      scopeType: row.scope_type === "object" ? "object" : "note", scopeId: String(row.scope_id),
+      scopeType: mapAnalysisScopeType(row.scope_type), scopeId: String(row.scope_id),
       status: String(row.status) as AnalysisRunRecord["status"], error: row.error ? String(row.error) : null,
       createdAt: String(row.created_at), completedAt: row.completed_at ? String(row.completed_at) : null,
     }));
@@ -174,9 +178,13 @@ export function getAnalysisRun(runId: string): AnalysisRunRecord | null {
       startedAt: step.started_at ? String(step.started_at) : null,
       completedAt: step.completed_at ? String(step.completed_at) : null,
     }));
-  const runFindings = (sqlite.prepare("SELECT * FROM findings WHERE run_id = ? ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at").all(runId) as Row[]).map(mapFinding);
+  const preserved = getAiRecord<{ findings: FindingRecord[] }>(`report:${runId}`);
+  const runFindings = preserved ? preserved.findings.map((finding) => {
+    const current = sqlite.prepare("SELECT status FROM findings WHERE id = ?").get(finding.id) as { status: FindingStatus } | undefined;
+    return { ...finding, status: current?.status ?? finding.status };
+  }) : (sqlite.prepare("SELECT * FROM findings WHERE run_id = ? ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, created_at").all(runId) as Row[]).map(mapFinding);
   return {
-    id: String(row.id), provider: String(row.provider), scopeType: row.scope_type === "object" ? "object" : "note",
+    id: String(row.id), provider: String(row.provider), scopeType: mapAnalysisScopeType(row.scope_type),
     scopeId: String(row.scope_id), status: String(row.status) as AnalysisRunRecord["status"],
     error: row.error ? String(row.error) : null, createdAt: String(row.created_at),
     completedAt: row.completed_at ? String(row.completed_at) : null, steps, findings: runFindings,
@@ -346,7 +354,33 @@ export function archiveItem(kind: "note" | "object" | "type", itemId: string) {
   sqlite.prepare(`UPDATE ${table} SET archived_at = ? WHERE id = ?`).run(now(), itemId);
 }
 
-export function buildAnalysisSnapshot(scopeType: "note" | "object", scopeId: string, selectedNoteIds?: string[]): AnalysisSnapshot {
+function mapAnalysisScopeType(value: unknown): AnalysisScopeType {
+  if (value === "object" || value === "collection") return value;
+  return "note";
+}
+
+function noteIsWithinDateRange(note: NoteRecord, dateRange?: AnalysisDateRange) {
+  if (!dateRange?.start && !dateRange?.end) return true;
+  const timestamp = new Date(note.updatedAt).getTime();
+  const start = dateRange.start ? new Date(`${dateRange.start}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+  const end = dateRange.end ? new Date(`${dateRange.end}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY;
+  return timestamp >= start && timestamp <= end;
+}
+
+function collectionScopeLabel(scopeId: string, noteCount: number, dateRange?: AnalysisDateRange) {
+  const formatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
+  const formatDate = (value: string) => formatter.format(new Date(`${value}T00:00:00Z`));
+  const period = dateRange?.start && dateRange.end
+    ? `${formatDate(dateRange.start)} a ${formatDate(dateRange.end)}`
+    : dateRange?.start
+      ? `desde ${formatDate(dateRange.start)}`
+      : dateRange?.end
+        ? `até ${formatDate(dateRange.end)}`
+        : "todo o histórico";
+  return scopeId === "general" ? `Visão geral · ${period}` : `Seleção de ${noteCount} nota${noteCount === 1 ? "" : "s"} · ${period}`;
+}
+
+export function buildAnalysisSnapshot(scopeType: AnalysisScopeType, scopeId: string, selectedNoteIds?: string[], dateRange?: AnalysisDateRange): AnalysisSnapshot {
   const { sqlite } = getDatabase();
   const allActiveNotes = allNotes();
   const allActiveObjects = allObjects();
@@ -354,10 +388,12 @@ export function buildAnalysisSnapshot(scopeType: "note" | "object", scopeId: str
   const objectMap = new Map(allActiveObjects.map((object) => [object.id, object]));
   const scopeNote = scopeType === "note" ? noteMap.get(scopeId) : undefined;
   const scopeObject = scopeType === "object" ? objectMap.get(scopeId) : undefined;
-  if (!scopeNote && !scopeObject) throw new Error("O item selecionado não existe ou foi arquivado.");
+  if (scopeType !== "collection" && !scopeNote && !scopeObject) throw new Error("O item selecionado não existe ou foi arquivado.");
   const objectIds = new Set<string>();
   const noteIds = new Set<string>();
-  if (scopeNote) {
+  if (scopeType === "collection") {
+    allActiveNotes.filter((note) => noteIsWithinDateRange(note, dateRange)).forEach((note) => noteIds.add(note.id));
+  } else if (scopeNote) {
     noteIds.add(scopeNote.id);
     scopeNote.mentions.forEach((object) => objectIds.add(object.id));
     allActiveNotes.forEach((note) => {
@@ -373,14 +409,25 @@ export function buildAnalysisSnapshot(scopeType: "note" | "object", scopeId: str
     });
   }
   const allowedNoteIds = new Set(noteIds);
-  const includedIds = selectedNoteIds ? selectedNoteIds.filter((noteId) => allowedNoteIds.has(noteId)) : [...noteIds];
+  const includedIds = selectedNoteIds ? [...new Set(selectedNoteIds.filter((noteId) => allowedNoteIds.has(noteId)))] : [...noteIds];
   const includedNotes = includedIds.map((noteId) => noteMap.get(noteId)).filter((note): note is NoteRecord => Boolean(note));
+  if (!includedNotes.length) throw new Error("Selecione ao menos uma nota para analisar.");
+  if (selectedNoteIds && includedNotes.length > 50) throw new Error("TOO_MANY_NOTES");
   const includedObjectIds = new Set<string>(scopeObject ? [scopeObject.id] : []);
   includedNotes.forEach((note) => note.mentions.forEach((object) => includedObjectIds.add(object.id)));
   const relationRows = sqlite.prepare("SELECT * FROM relationships WHERE archived_at IS NULL").all() as Row[];
   const relationshipRecords = relationRows.map(mapRelationship).filter((relation) => includedObjectIds.has(relation.sourceObjectId) && includedObjectIds.has(relation.targetObjectId));
   return {
-    scope: { type: scopeType, id: scopeId, label: scopeNote ? (scopeNote.title || scopeNote.contentText.slice(0, 60) || "Nota sem título") : scopeObject!.name },
+    scope: {
+      type: scopeType,
+      id: scopeId,
+      label: scopeType === "collection"
+        ? collectionScopeLabel(scopeId, includedNotes.length, dateRange)
+        : scopeNote
+          ? (scopeNote.title || scopeNote.contentText.slice(0, 60) || "Nota sem título")
+          : scopeObject!.name,
+      ...(scopeType === "collection" ? { dateRange: dateRange ?? { start: "", end: "" } } : {}),
+    },
     notes: includedNotes.map((note) => ({
       id: note.id, title: note.title || "Nota sem título", content: note.contentText,
       updatedAt: note.updatedAt, objectIds: note.mentions.map((object) => object.id),
@@ -396,16 +443,17 @@ export function buildAnalysisSnapshot(scopeType: "note" | "object", scopeId: str
 
 const analysisTypes: AnalysisType[] = ["connections", "risks", "contradictions", "gaps", "follow_ups"];
 
-export function createAnalysisRun(snapshot: AnalysisSnapshot, selectedTypes: AnalysisType[] = analysisTypes) {
+export function createAnalysisRun(snapshot: AnalysisSnapshot, selectedTypes: AnalysisType[] = ["connections"]) {
   const { sqlite } = getDatabase();
   const runId = id("analysis");
   const selected = analysisTypes.filter((type) => selectedTypes.includes(type));
   if (!selected.length) throw new Error("Selecione ao menos um tipo de análise.");
+  snapshot = { ...snapshot, analysisTypes: selected };
   sqlite.transaction(() => {
     sqlite.prepare(`INSERT INTO analysis_runs (id,provider,scope_type,scope_id,snapshot_json,status,created_at)
       VALUES (?,?,?,?,?,'queued',?)`).run(runId, "codex-cli", snapshot.scope.type, snapshot.scope.id, JSON.stringify(snapshot), now());
     const insertStep = sqlite.prepare(`INSERT INTO analysis_steps (id,run_id,name,position,status) VALUES (?,?,?,?,'queued')`);
-    [...selected, "consolidation"].forEach((name, position) => insertStep.run(id("step"), runId, name, position));
+    ["macro"].forEach((name, position) => insertStep.run(id("step"), runId, name, position));
   })();
   return runId;
 }
@@ -453,6 +501,53 @@ export function replaceFindings(runId: string, findingsInput: SpecialistFinding[
   })();
 }
 
+export function listFindings(): FindingRecord[] {
+  return (getDatabase().sqlite.prepare("SELECT * FROM findings ORDER BY created_at DESC").all() as Row[]).map(mapFinding);
+}
+
+export function saveMacroReport(runId: string, findingsInput: SpecialistFinding[]) {
+  const { sqlite } = getDatabase();
+  const snapshot = getRunSnapshot(runId);
+  sqlite.transaction(() => {
+    const records: FindingRecord[] = [];
+    const knownFindings = listFindings();
+    for (const finding of findingsInput) {
+      const existing = knownFindings.find((f) => f.id === finding.detail?.previousFindingId)
+        ?? knownFindings.find((f) => f.category === finding.category && normalizeName(f.title) === normalizeName(finding.title)
+          && f.sourceNoteIds.some((noteId) => finding.sourceNoteIds.includes(noteId)));
+      const findingId = existing?.id ?? id("finding");
+      const evidence = [...(existing?.detail?.evidence ?? []), ...(finding.detail?.evidence ?? [])]
+        .filter((item, index, all) => all.findIndex((other) => other.noteId === item.noteId && other.quote === item.quote) === index);
+      const detail = finding.detail ? { ...finding.detail, evidence, previousFindingId: existing?.id ?? null } : undefined;
+      const sourceNoteIds = [...new Set([...(existing?.sourceNoteIds ?? []), ...finding.sourceNoteIds])];
+      const sourceObjectIds = [...new Set([...(existing?.sourceObjectIds ?? []), ...finding.sourceObjectIds])];
+      if (existing) {
+        // Old report occurrences remain immutable before updating the canonical finding.
+        if (!getAiRecord(`report:${existing.runId}`)) {
+          putAiRecord(`report:${existing.runId}`, "report", { findings: getAnalysisRun(existing.runId)?.findings ?? [] });
+        }
+        sqlite.prepare("UPDATE findings SET run_id=?,title=?,explanation=?,priority=?,suggested_action=?,detail_json=? WHERE id=?")
+          .run(runId, finding.title, finding.explanation, finding.priority, finding.suggestedAction, JSON.stringify(detail), findingId);
+      } else {
+        sqlite.prepare("INSERT INTO findings (id,run_id,category,title,explanation,priority,confidence,suggested_action,status,created_at,detail_json) VALUES (?,?,?,?,?,?,0,?,'open',?,?)")
+          .run(findingId, runId, finding.category, finding.title, finding.explanation, finding.priority, finding.suggestedAction, now(), JSON.stringify(detail));
+      }
+      for (const noteId of sourceNoteIds) sqlite.prepare("INSERT OR IGNORE INTO finding_sources VALUES (?,'note',?)").run(findingId, noteId);
+      for (const objectId of sourceObjectIds) sqlite.prepare("INSERT OR IGNORE INTO finding_sources VALUES (?,'object',?)").run(findingId, objectId);
+      const record = { ...finding, sourceNoteIds, sourceObjectIds, detail, id: findingId, runId, status: existing?.status ?? "open", createdAt: existing?.createdAt ?? now() };
+      records.push(record);
+      const knownIndex = knownFindings.findIndex((item) => item.id === findingId);
+      if (knownIndex >= 0) knownFindings[knownIndex] = record;
+      else knownFindings.push(record);
+    }
+    putAiRecord(`report:${runId}`, "report", { findings: records });
+    const markerId = `baseline:${snapshot.scope.type}:${snapshot.scope.id}:${JSON.stringify(snapshot.scope.dateRange ?? {})}`;
+    const baseline = getAiRecord<Record<string, string>>(markerId) ?? {};
+    snapshot.notes.forEach((n) => { baseline[n.id] = n.updatedAt; });
+    putAiRecord(markerId, "baseline", baseline);
+  })();
+}
+
 export function updateFinding(findingId: string, status: FindingStatus) {
   getDatabase().sqlite.prepare("UPDATE findings SET status = ? WHERE id = ?").run(status, findingId);
 }
@@ -468,7 +563,7 @@ export function acceptFinding(findingId: string) {
   return relationId;
 }
 
-const backupTables = ["object_types", "objects", "notes", "note_mentions", "relationships", "analysis_runs", "analysis_steps", "findings", "finding_sources"] as const;
+const backupTables = ["object_types", "objects", "notes", "note_mentions", "relationships", "analysis_runs", "analysis_steps", "findings", "finding_sources", "ai_records"] as const;
 const backupColumns = {
   object_types: ["id", "name", "name_normalized", "icon", "color", "created_at", "archived_at"],
   objects: ["id", "type_id", "name", "name_normalized", "description", "created_at", "updated_at", "archived_at"],
@@ -477,13 +572,14 @@ const backupColumns = {
   relationships: ["id", "source_object_id", "target_object_id", "label", "origin", "finding_id", "created_at", "archived_at"],
   analysis_runs: ["id", "provider", "scope_type", "scope_id", "snapshot_json", "status", "error", "created_at", "completed_at"],
   analysis_steps: ["id", "run_id", "name", "position", "status", "output_json", "error", "started_at", "completed_at"],
-  findings: ["id", "run_id", "category", "title", "explanation", "priority", "confidence", "suggested_action", "status", "created_at"],
+  findings: ["id", "run_id", "category", "title", "explanation", "priority", "confidence", "suggested_action", "status", "created_at", "detail_json"],
   finding_sources: ["finding_id", "source_type", "source_id"],
+  ai_records: ["id", "kind", "data_json", "created_at"],
 } as const satisfies Record<(typeof backupTables)[number], readonly string[]>;
 const backupValueSchema = z.union([z.string(), z.number(), z.null()]);
 const backupRowSchema = z.record(z.string(), backupValueSchema);
 const backupSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   exportedAt: z.iso.datetime(),
   tables: z.object({
     object_types: z.array(backupRowSchema),
@@ -495,6 +591,7 @@ const backupSchema = z.object({
     analysis_steps: z.array(backupRowSchema),
     findings: z.array(backupRowSchema),
     finding_sources: z.array(backupRowSchema),
+    ai_records: z.array(backupRowSchema).optional(),
   }).strict(),
 }).strict();
 
@@ -502,15 +599,18 @@ export function exportBackup() {
   const { sqlite } = getDatabase();
   const tables: Record<string, Row[]> = {};
   backupTables.forEach((table) => { tables[table] = sqlite.prepare(`SELECT * FROM ${table}`).all() as Row[]; });
-  return { version: 1 as const, exportedAt: now(), tables };
+  return { version: 2 as const, exportedAt: now(), tables };
 }
 
 export function restoreBackup(input: unknown) {
   const backup = backupSchema.parse(input);
+  if (backup.version === 2 && !backup.tables.ai_records) throw new Error("Backup inválido: ai_records ausente.");
+  if (backup.version === 1) backup.tables.findings.forEach((row) => { row.detail_json = row.detail_json ?? null; });
+  backup.tables.ai_records ??= [];
   for (const table of backupTables) {
     const expectedColumns = backupColumns[table] as readonly string[];
     const expectedColumnSet = new Set(expectedColumns);
-    for (const row of backup.tables[table]) {
+    for (const row of backup.tables[table] ?? []) {
       const actualColumns = Object.keys(row);
       if (actualColumns.length !== expectedColumns.length || actualColumns.some((column) => !expectedColumnSet.has(column))) {
         throw new Error(`Backup inválido: colunas inesperadas na tabela ${table}.`);

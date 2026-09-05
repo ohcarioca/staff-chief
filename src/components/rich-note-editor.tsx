@@ -7,6 +7,7 @@ import Mention from "@tiptap/extension-mention";
 import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
 import { Archive, Bold, Heading2, Italic, List, ListOrdered, Quote, Redo2, Save, Sparkles, Strikethrough, Undo2 } from "lucide-react";
 import type { KnowledgeObjectRecord, NoteRecord, ObjectTypeRecord } from "@/lib/contracts";
+import { DraftAssistant } from "./draft-assistant";
 
 type MentionItem = {
   id: string;
@@ -17,7 +18,12 @@ type MentionItem = {
   isNew: boolean;
 };
 
-function mentionSuggestion(types: ObjectTypeRecord[], objects: KnowledgeObjectRecord[]) {
+class MentionCatalog {
+  constructor(public types: ObjectTypeRecord[], public objects: KnowledgeObjectRecord[]) {}
+  update(types: ObjectTypeRecord[], objects: KnowledgeObjectRecord[]) { this.types = types; this.objects = objects; }
+}
+
+function mentionSuggestion(getCatalog: () => { types: ObjectTypeRecord[]; objects: KnowledgeObjectRecord[] }) {
   return {
     char: "@",
     allowSpaces: true,
@@ -32,6 +38,7 @@ function mentionSuggestion(types: ObjectTypeRecord[], objects: KnowledgeObjectRe
 
       const draw = () => {
         if (!root || !props) return;
+        const { types, objects } = getCatalog();
         root.replaceChildren();
         selectable = [];
         const header = document.createElement("div");
@@ -160,6 +167,8 @@ export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onA
   const [dirty, setDirty] = useState(isNew && !compact);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [catalog] = useState(() => new MentionCatalog(objectTypes, objects));
+  useEffect(() => { catalog.update(objectTypes, objects); }, [catalog, objectTypes, objects]);
   const extensions = useMemo(() => [
     StarterKit.configure({ heading: { levels: [2, 3] } }),
     StaffMention.configure({
@@ -169,9 +178,9 @@ export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onA
         class: "mention-chip", "data-entity-id": node.attrs.id, "data-type-id": node.attrs.typeId,
         style: `--mention-color:${node.attrs.color}`,
       }, `${node.attrs.typeLabel}: ${node.attrs.label}`],
-      suggestion: mentionSuggestion(objectTypes, objects),
+      suggestion: mentionSuggestion(() => catalog),
     }),
-  ], [objectTypes, objects]);
+  ], [catalog]);
   const editor = useEditor({
     immediatelyRender: false,
     extensions,
@@ -251,6 +260,7 @@ export function RichNoteEditor({ note, isNew, objectTypes, objects, onSaved, onA
       <span className="toolbar-hint">Digite <kbd>@</kbd> para relacionar</span>
     </div>
     <EditorContent editor={editor} className="editor-scroll" />
+    {editor && <DraftAssistant editor={editor} title={title} noteId={isNew ? undefined : note?.id} objects={objects} types={objectTypes} />}
     {error && <p className="inline-error">{error}</p>}
   </section>;
 }

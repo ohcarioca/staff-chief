@@ -11,6 +11,25 @@ afterEach(() => {
 });
 
 describe("analysis preview", () => {
+  it("does not reopen a completed stream when the refresh callback changes", () => {
+    const opened = vi.fn();
+    let publish: (run: AnalysisRunRecord) => void = () => {};
+    class Stream {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor() { opened(); publish = (run) => this.onmessage?.({ data: JSON.stringify(run) } as MessageEvent); }
+      close() {}
+    }
+    vi.stubGlobal("EventSource", Stream);
+    const props = { scope: null, existingRunId: "r", notes: [], objects: [], onOpenSource: vi.fn(), onClose: vi.fn() };
+    const changed = vi.fn();
+    const view = render(<AnalysisDialog {...props} onChanged={changed} />);
+    act(() => publish({ id: "r", provider: "test", scopeType: "note", scopeId: "n", status: "completed", error: null, createdAt: "", completedAt: "", steps: [], findings: [] }));
+    view.rerender(<AnalysisDialog {...props} onChanged={() => changed()} />);
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
   it("can unmount while loading without aborting the fetch request", () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       void input;

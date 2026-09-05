@@ -73,17 +73,24 @@ function initialize(sqlite: Database.Database) {
       id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
       category TEXT NOT NULL, title TEXT NOT NULL, explanation TEXT NOT NULL,
       priority TEXT NOT NULL, confidence INTEGER NOT NULL, suggested_action TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL
+      status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, detail_json TEXT
     );
     CREATE TABLE IF NOT EXISTS finding_sources (
       finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
       source_type TEXT NOT NULL CHECK(source_type IN ('note','object')), source_id TEXT NOT NULL,
       PRIMARY KEY(finding_id, source_type, source_id)
     );
+    CREATE TABLE IF NOT EXISTS ai_records (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, data_json TEXT NOT NULL, created_at TEXT NOT NULL
+    );
     CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
       note_id UNINDEXED, title, content, tokenize='unicode61 remove_diacritics 2'
     );
   `);
+  const findingColumns = sqlite.prepare("PRAGMA table_info(findings)").all() as Array<{ name: string }>;
+  if (!findingColumns.some((column) => column.name === "detail_json")) {
+    sqlite.exec("ALTER TABLE findings ADD COLUMN detail_json TEXT");
+  }
 
   const insertType = sqlite.prepare(`
     INSERT OR IGNORE INTO object_types

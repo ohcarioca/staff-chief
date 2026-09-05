@@ -6,16 +6,25 @@ All notable changes to Staff Chief are documented in this file. The format follo
 
 ### Added
 
+- Manual draft improvement, local object suggestions, separate note connections and per-finding deepening.
+- Shared context selection, internal size safeguards, session response reuse, and read-only human-rated report comparisons.
+
 - Comprehensive English project, user, architecture, data, AI, security, backup, development, troubleshooting, contribution, and security-policy documentation.
 - Public repository metadata and explicit project language conventions.
 - Isolated synthetic AI test data with three diagnostic scenarios, one false-positive control, custom object types, and a documented evaluation rubric.
+- Calendar-constrained general and multi-note AI analysis from the dashboard, with manual note selection and immutable range metadata.
 
 ### Changed
+
+- New analyses use one macro call with selected lenses, excerpts, evidence and historical finding continuity.
+- Backup v2 preserves report occurrences and AI metadata while accepting v1 imports.
 
 - Internal Codex prompt instructions, automated test descriptions, test fixtures, and startup-helper messages now use English.
 - User-facing application copy and AI result language remain Brazilian Portuguese.
 
 ### Fixed
+
+- Completed reports no longer reopen SSE on callback changes; object refreshes no longer recreate the editor.
 
 - Analysis findings now open as a single-expand accordion, preserving the finding selected from the dashboard instead of expanding the entire report.
 

@@ -108,6 +108,22 @@ export class CodexCliProvider implements AnalysisProvider {
 
   constructor(private readonly executor?: (prompt: string, schemaPath: string, cwd: string, signal: AbortSignal) => Promise<string>) {}
 
+  async runStructured(prompt: string, schema: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+    if (signal.aborted) throw new DOMException("Análise cancelada.", "AbortError");
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "staff-chief-assist-"));
+    try {
+      const schemaPath = path.join(directory, "schema.json");
+      await fs.writeFile(schemaPath, JSON.stringify(schema), "utf8");
+      const raw = await this.execute(prompt, schemaPath, directory, signal);
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      if (start < 0 || end < start) throw new Error("O Codex não retornou JSON válido.");
+      return JSON.parse(raw.slice(start, end + 1));
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  }
+
   async runStep({ step, snapshot, previousOutputs, signal }: Parameters<AnalysisProvider["runStep"]>[0]) {
     const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "staff-chief-analysis-"));
     const schemaPath = path.join(temporaryDirectory, "output-schema.json");

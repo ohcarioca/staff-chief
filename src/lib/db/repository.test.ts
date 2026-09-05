@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { normalizeName, resetDatabaseForTests } from "./client";
+import { getDatabase, normalizeName, resetDatabaseForTests } from "./client";
 import {
   archiveItem, buildAnalysisSnapshot, createAnalysisRun, createObjectType, exportBackup,
   getAnalysisRun, getAppState, getRunSnapshot, replaceFindings, restoreBackup, saveNote, textFromDocument,
@@ -54,10 +54,26 @@ describe("local knowledge base", () => {
     expect(snapshot.scope.type).toBe("note");
   });
 
+  it("builds a multi-note snapshot constrained by the calendar range", () => {
+    const [recentNote, olderNote] = getAppState().notes;
+    getDatabase().sqlite.prepare("UPDATE notes SET updated_at = ? WHERE id = ?").run("2026-09-04T12:00:00.000Z", recentNote.id);
+    getDatabase().sqlite.prepare("UPDATE notes SET updated_at = ? WHERE id = ?").run("2026-08-15T12:00:00.000Z", olderNote.id);
+
+    const dateRange = { start: "2026-09-01", end: "2026-09-30" };
+    const snapshot = buildAnalysisSnapshot("collection", "selection", [recentNote.id, olderNote.id], dateRange);
+    expect(snapshot.scope.type).toBe("collection");
+    expect(snapshot.scope.dateRange).toEqual(dateRange);
+    expect(snapshot.scope.label).toContain("Seleção de 1 nota");
+    expect(snapshot.notes.map((note) => note.id)).toEqual([recentNote.id]);
+
+    const runId = createAnalysisRun(snapshot, ["risks"]);
+    expect(getAnalysisRun(runId)?.scopeType).toBe("collection");
+  });
+
   it("exports and restores a versioned database with a safety copy", () => {
     const backup = exportBackup();
     const safetyPath = restoreBackup(backup);
-    expect(backup.version).toBe(1);
+    expect(backup.version).toBe(2);
     expect(fs.existsSync(safetyPath)).toBe(true);
     expect(getAppState().notes).toHaveLength(2);
   });
@@ -72,8 +88,8 @@ describe("local knowledge base", () => {
   it("keeps the snapshot immutable and records partial analysis states", () => {
     const snapshot = buildAnalysisSnapshot("note", getAppState().notes[0].id);
     const runId = createAnalysisRun(snapshot);
-    updateStep(runId, "connections", "completed", { output: { summary: "ok", findings: [] } });
-    updateStep(runId, "risks", "failed", { error: "simulated failure" });
+    updateStep(runId, "macro", "completed", { output: { summary: "ok", findings: [] } });
+    updateStep(runId, "macro", "failed", { error: "simulated failure" });
     replaceFindings(runId, [{
       category: "follow_up", title: "Resume conversation", explanation: "The note needs follow-up.",
       priority: "medium", confidence: 70, suggestedAction: "Schedule a conversation",
@@ -82,15 +98,16 @@ describe("local knowledge base", () => {
     updateRun(runId, "partial", "1 step did not complete.");
     const run = getAnalysisRun(runId);
     expect(run?.status).toBe("partial");
-    expect(run?.steps?.find((step) => step.name === "risks")?.status).toBe("failed");
+    expect(run?.steps?.find((step) => step.name === "macro")?.status).toBe("failed");
     expect(run?.findings?.[0].status).toBe("open");
-    expect(getRunSnapshot(runId)).toEqual(snapshot);
+    expect(getRunSnapshot(runId)).toEqual({ ...snapshot, analysisTypes: ["connections"] });
   });
 
-  it("creates only the selected specialists and consolidation", () => {
+  it("creates one macro step while preserving the selected lenses", () => {
     const snapshot = buildAnalysisSnapshot("note", getAppState().notes[0].id);
     const runId = createAnalysisRun(snapshot, ["risks", "gaps"]);
-    expect(getAnalysisRun(runId)?.steps?.map((step) => step.name)).toEqual(["risks", "gaps", "consolidation"]);
+    expect(getAnalysisRun(runId)?.steps?.map((step) => step.name)).toEqual(["macro"]);
+    expect(getRunSnapshot(runId).analysisTypes).toEqual(["risks", "gaps"]);
   });
 
   it("archives notes, objects, and types without removing them from the backup", () => {

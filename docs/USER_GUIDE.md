@@ -26,7 +26,9 @@ The dashboard summarizes:
 - knowledge-base connection health;
 - recent analysis runs.
 
-Use the calendar controls in the inspector to select all time, today, the last 7 days, the last 30 days, or a custom date range. The priority section follows the same filter.
+Use the calendar controls in the inspector to select all time, today, the last 7 days, the last 30 days, or a custom date range. The priority section and dashboard AI analysis follow the same filter.
+
+Select **Análise IA** in the priority header to analyze all notes updated during the active period or choose a manual subset. The launcher displays the applied period and note count before preparing the local preview. A maximum of 50 notes can be analyzed at once; narrow the calendar period or use manual selection when the period contains more.
 
 The complete editor at the bottom of the dashboard creates a new note without leaving the overview.
 
@@ -83,7 +85,13 @@ Search does not call an external service.
 
 ## AI findings
 
-Open findings appear in the priority panel and in analysis reports. A finding includes a category, priority, confidence score, explanation, suggested action, and source references.
+Open findings appear in the priority panel and in analysis reports. Current findings include a category, justified priority, evidence strength, literal source excerpts, impact, limitations, and suggested action. Legacy confidence is retained internally, not shown as a calibrated probability.
+
+Analysis can start from three scopes:
+
+- a note and its directly connected context;
+- an object and the notes that mention it;
+- a dashboard collection containing all or selected notes from the active calendar period.
 
 Available actions are:
 
@@ -100,3 +108,14 @@ For the complete consent and execution model, see [AI analysis](AI_ANALYSIS.md).
 Use **Exportar backup** to download a versioned JSON export. Use **Restaurar base** to validate and restore a compatible export. Restore replaces the current logical database only after creating a local safety copy.
 
 See [Backup and recovery](BACKUP_AND_RECOVERY.md) before restoring important data.
+
+
+## Improve a draft and review connections economically
+
+Object suggestions during typing are local and do not call the model. Accept an existing object to insert a mention, or ignore the suggestion. Ambiguous names can show more than one typed object.
+
+Select text to limit the scope, then click **Melhorar**. Review the captured blocks and candidates; **Confirmar e enviar** starts the only model call. Apply or reject each suggestion. Saving is still separate, and **Desfazer** restores an accepted edit. Editing the draft while the request runs invalidates its suggestions. Blocks with existing mentions or rich marks are protected from rewriting.
+
+**Buscar conexoes** is a separate operation for up to three connections to other notes. Review and remove candidate sources before confirming. These suggestions do not create confirmed relationships.
+
+For broader review, **Analise IA** starts with connections selected. All selected lenses share one call. Choose full or incremental review, examine the selected excerpts, and remove sources if needed. Reports show evidence and offer **Aprofundar** as a separately confirmed call. Recurring findings preserve earlier resolved/dismissed decisions.

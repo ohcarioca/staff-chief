@@ -1,4 +1,7 @@
 export type ViewName = "dashboard" | "map" | "notes" | "objects";
+export type AnalysisScopeType = "note" | "object" | "collection";
+export type AnalysisScope = { type: AnalysisScopeType; id: string };
+export type AnalysisDateRange = { start: string; end: string };
 export type FindingCategory =
   | "connection"
   | "risk"
@@ -69,6 +72,32 @@ export interface FindingRecord {
   sourceNoteIds: string[];
   sourceObjectIds: string[];
   createdAt: string;
+  detail?: FindingDetail;
+}
+
+export interface FindingDetail {
+  evidence: Array<{ noteId: string; quote: string }>;
+  impact: string;
+  limitation: string;
+  priorityReason: string;
+  evidenceStrength: "limited" | "supported" | "strong";
+  previousFindingId: string | null;
+}
+
+export interface DraftBlock { id: string; text: string; protected: boolean }
+export interface DraftSuggestion { blockId: string; before: string; after: string; format: "paragraph" | "heading" | "bullet"; reason: string }
+export interface ObjectSuggestion { blockId: string; text: string; typeId: string; objectId: string | null }
+export interface AssistanceResult {
+  changes: DraftSuggestion[];
+  objects: ObjectSuggestion[];
+  findings: SpecialistFinding[];
+}
+export interface AiPreview {
+  previewId: string;
+  overLimit: boolean;
+  sources: Array<{ id: string; title: string; content: string; updatedAt: string }>;
+  candidateObjects: Array<{ id: string; name: string; typeId: string }>;
+  notice: string;
 }
 
 export interface AnalysisStepRecord {
@@ -84,7 +113,7 @@ export interface AnalysisStepRecord {
 export interface AnalysisRunRecord {
   id: string;
   provider: string;
-  scopeType: "note" | "object";
+  scopeType: AnalysisScopeType;
   scopeId: string;
   status: AnalysisStatus;
   error: string | null;
@@ -124,10 +153,16 @@ export interface AppState {
 }
 
 export interface AnalysisSnapshot {
+  analysisTypes?: AnalysisType[];
+  mode?: "full" | "incremental";
+  changedNoteIds?: string[];
+  previousFindings?: FindingRecord[];
+  prepared?: AiPreview;
   scope: {
-    type: "note" | "object";
+    type: AnalysisScopeType;
     id: string;
     label: string;
+    dateRange?: AnalysisDateRange;
   };
   notes: Array<{
     id: string;
@@ -159,6 +194,7 @@ export interface SpecialistFinding {
   suggestedAction: string;
   sourceNoteIds: string[];
   sourceObjectIds: string[];
+  detail?: FindingDetail;
 }
 
 export interface SpecialistOutput {

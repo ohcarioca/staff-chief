@@ -65,7 +65,7 @@ export const relationships = sqliteTable("relationships", {
 export const analysisRuns = sqliteTable("analysis_runs", {
   id: text("id").primaryKey(),
   provider: text("provider").notNull(),
-  scopeType: text("scope_type", { enum: ["note", "object"] }).notNull(),
+  scopeType: text("scope_type", { enum: ["note", "object", "collection"] }).notNull(),
   scopeId: text("scope_id").notNull(),
   snapshotJson: text("snapshot_json").notNull(),
   status: text("status").notNull(),
@@ -95,7 +95,15 @@ export const findings = sqliteTable("findings", {
   priority: text("priority").notNull(),
   confidence: integer("confidence").notNull(),
   suggestedAction: text("suggested_action").notNull(),
+  detailJson: text("detail_json"),
   status: text("status").notNull().default("open"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const aiRecords = sqliteTable("ai_records", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  dataJson: text("data_json").notNull(),
   createdAt: text("created_at").notNull(),
 });
 

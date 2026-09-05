@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { AlertTriangle, Check, ChevronRight, Circle, LoaderCircle, RefreshCw, Sparkles, Square, X } from "lucide-react";
-import type { AnalysisRunRecord, AnalysisSnapshot, AnalysisType, FindingRecord, KnowledgeObjectRecord, NoteRecord } from "@/lib/contracts";
-
-type Scope = { type: "note" | "object"; id: string };
+import type { AnalysisDateRange, AnalysisRunRecord, AnalysisScope, AnalysisSnapshot, AnalysisType, FindingRecord, KnowledgeObjectRecord, NoteRecord } from "@/lib/contracts";
+import { FindingDeepen } from "./finding-deepen";
 
 interface AnalysisDialogProps {
-  scope: Scope | null;
+  scope: AnalysisScope | null;
   existingRunId?: string | null;
   initialFindingId?: string | null;
+  initialNoteIds?: string[];
+  dateRange?: AnalysisDateRange;
   notes: NoteRecord[];
   objects: KnowledgeObjectRecord[];
   onOpenSource(type: "note" | "object", id: string): void;
@@ -19,6 +20,7 @@ interface AnalysisDialogProps {
 }
 
 const stepLabels: Record<string, string> = {
+  macro: "Análise integrada · uma chamada",
   connections: "Conexões e oportunidades",
   risks: "Riscos",
   contradictions: "Contradições",
@@ -37,8 +39,9 @@ async function readJson(response: Response) {
   return data;
 }
 
-export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, objects, onOpenSource, onClose, onChanged, analysisTypes }: AnalysisDialogProps) {
+export function AnalysisDialog({ scope, existingRunId, initialFindingId, initialNoteIds, dateRange, notes, objects, onOpenSource, onClose, onChanged, analysisTypes }: AnalysisDialogProps) {
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot | null>(null);
+  const [mode, setMode] = useState<"full" | "incremental">("full");
   const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
   const [run, setRun] = useState<AnalysisRunRecord | null>(null);
   const [runId, setRunId] = useState<string | null>(existingRunId ?? null);
@@ -47,13 +50,14 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
   const [streamVersion, setStreamVersion] = useState(0);
   const [expandedFindingId, setExpandedFindingId] = useState<string | null>(initialFindingId ?? null);
   const terminal = run ? ["completed", "partial", "failed", "cancelled"].includes(run.status) : false;
+  const reportChanged = useEffectEvent(() => { void onChanged(); });
 
   useEffect(() => {
     if (!scope || existingRunId) return;
     let active = true;
     fetch("/api/analysis/preview", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id }),
+      body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id, selectedNoteIds: initialNoteIds, dateRange, mode, analysisTypes }),
     }).then(readJson).then((data: AnalysisSnapshot) => {
       if (!active) return;
       setSnapshot(data);
@@ -64,7 +68,7 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
     })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [scope, existingRunId]);
+  }, [scope, existingRunId, initialNoteIds, dateRange, mode, analysisTypes]);
 
   useEffect(() => {
     if (!runId) return;
@@ -74,12 +78,12 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
       setRun(nextRun);
       if (["completed", "partial", "failed", "cancelled"].includes(nextRun.status)) {
         source.close();
-        void onChanged();
+        reportChanged();
       }
     };
     source.onerror = () => source.close();
     return () => source.close();
-  }, [runId, onChanged, streamVersion]);
+  }, [runId, streamVersion]);
 
   const selectedCount = selectedNotes.size;
   const highCount = useMemo(() => run?.findings?.filter((finding) => finding.priority === "high" && finding.status === "open").length ?? 0, [run]);
@@ -93,7 +97,7 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
     try {
       const result = await readJson(await fetch("/api/analysis/run", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scopeType: scope.type, scopeId: scope.id, selectedNoteIds: [...selectedNotes], analysisTypes }),
+        body: JSON.stringify({ previewId: snapshot.prepared?.previewId, scopeType: scope.type, scopeId: scope.id, selectedNoteIds: [...selectedNotes], dateRange, analysisTypes }),
       }));
       setRunId(result.runId);
     } catch (startError) {
@@ -140,9 +144,11 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
       </header>
 
       {!runId && <div className="dialog-body preview-body">
+        <label>Modo de revisão <select value={mode} disabled={loading} onChange={(event) => { setSnapshot(null); setError(""); setLoading(true); setMode(event.target.value as "full" | "incremental"); }}><option value="full">Completa</option><option value="incremental">Notas alteradas + histórico relevante</option></select></label>
         {loading && <div className="loading-row"><LoaderCircle className="spin" size={18} /> Preparando o subgrafo…</div>}
         {snapshot && <>
           <div className="scope-card"><span>Escopo selecionado</span><strong>{snapshot.scope.label}</strong><small>{snapshot.objects.length} objetos · {snapshot.notes.length} notas relacionadas</small></div>
+          {snapshot.prepared && <div className="ai-review"><p>{snapshot.prepared.notice}</p>{snapshot.prepared.overLimit && <p className="inline-error">O contexto está amplo demais. Remova algumas fontes para continuar.</p>}</div>}
           {analysisTypes?.length && <div className="analysis-selection-summary"><span>Especialistas selecionados</span><div>{analysisTypes.map((type) => <strong key={type}>{stepLabels[type]}</strong>)}</div></div>}
           <div className="privacy-notice"><AlertTriangle size={17} /><p><strong>Confirme antes do envio.</strong> Somente os itens marcados abaixo serão enviados ao Codex usando sua sessão local. Nada será alterado automaticamente.</p></div>
           <div className="preview-section-title"><strong>Notas incluídas</strong><span>{selectedCount}/50</span></div>
@@ -151,10 +157,11 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
               <input type="checkbox" checked={selectedNotes.has(note.id)} onChange={(event) => setSelectedNotes((current) => {
                 const next = new Set(current); if (event.target.checked) next.add(note.id); else next.delete(note.id); return next;
               })} />
-              <span><strong>{note.title}</strong><small>{note.content.slice(0, 140) || "Nota vazia"}</small></span>
+              <span><strong>{note.title}</strong><small>{note.updatedAt}</small><span className="source-excerpt">{note.content || "Nota vazia"}</span></span>
             </label>)}
           </div>
           {!!snapshot.objects.length && <div className="object-preview-row">{snapshot.objects.map((object) => <span key={object.id}>{object.type}: {object.name}</span>)}</div>}
+          {!!snapshot.previousFindings?.length && <details><summary>Descobertas anteriores incluídas para evitar repetição</summary>{snapshot.previousFindings.map((f) => <p key={f.id}>{f.title} · {f.status === "dismissed" ? "Descartada" : f.status === "resolved" ? "Resolvida" : "Aberta"}</p>)}</details>}
         </>}
         {error && <p className="inline-error">{error}</p>}
       </div>}
@@ -186,13 +193,14 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
                   onClick={() => setExpandedFindingId((current) => current === finding.id ? null : finding.id)}
                 >
                   <span className="finding-heading">
-                    <span className="finding-meta"><span>{categoryLabels[finding.category]}</span><span>{finding.priority === "high" ? "Alta" : finding.priority === "medium" ? "Média" : "Baixa"} · {finding.confidence}%</span></span>
+                    <span className="finding-meta"><span>{categoryLabels[finding.category]}</span><span>{finding.priority === "high" ? "Alta" : finding.priority === "medium" ? "Média" : "Baixa"}{finding.detail ? ` · Evidência ${finding.detail.evidenceStrength === "strong" ? "forte" : finding.detail.evidenceStrength === "supported" ? "sustentada" : "limitada"}` : " · relatório legado"}</span></span>
                     <span className="finding-title">{finding.title}</span>
                   </span>
                   <ChevronRight className="finding-chevron" size={16} />
                 </button>
                 {isExpanded && <div className="finding-details" id={detailsId}>
                   <p>{finding.explanation}</p>
+                  {finding.detail && <div className="finding-evidence"><p><strong>Impacto:</strong> {finding.detail.impact}</p><p><strong>Por que priorizar:</strong> {finding.detail.priorityReason}</p>{finding.detail.previousFindingId && <p>Descoberta recorrente · decisão anterior preservada.</p>}{finding.detail.evidence.map((evidence, index) => <blockquote key={index}>{evidence.quote}<button onClick={() => onOpenSource("note", evidence.noteId)}>Abrir {notes.find((n) => n.id === evidence.noteId)?.title || "nota fonte"}</button></blockquote>)}<p><strong>Limitação:</strong> {finding.detail.limitation}</p></div>}
                   {finding.suggestedAction && <div className="suggested-action"><ChevronRight size={14} /><span>{finding.suggestedAction}</span></div>}
                   <div className="finding-sources">
                     {finding.sourceNoteIds.map((sourceId) => <button key={`note:${sourceId}`} onClick={() => onOpenSource("note", sourceId)}>Nota: {notes.find((note) => note.id === sourceId)?.title || notes.find((note) => note.id === sourceId)?.contentText.slice(0, 32) || sourceId}</button>)}
@@ -203,17 +211,18 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, notes, 
                     <button onClick={() => actOnFinding(finding, "resolved")}>Resolver</button>
                     <button onClick={() => actOnFinding(finding, "dismissed")}>Descartar</button>
                   </div>}
+                  <FindingDeepen findingId={finding.id} runId={finding.runId} />
                 </div>}
               </article>;
             })}
           </div>}
-          {terminal && !run.findings?.length && <div className="empty-report"><Sparkles size={24} /><h3>Nenhum achado sustentado pelas fontes</h3><p>O relatório foi preservado, mas os especialistas não encontraram evidências suficientes.</p></div>}
+          {terminal && !run.findings?.length && <div className="empty-report"><Sparkles size={24} /><h3>Nenhum achado sustentado pelas fontes</h3><p>O relatório foi preservado, mas a análise não encontrou evidências suficientes.</p></div>}
           {(run.error || error) && <p className="inline-error">{error || run.error}</p>}
         </>}
       </div>}
 
       <footer className="dialog-footer">
-        {!runId ? <><button className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" onClick={start} disabled={loading || !snapshot || selectedCount > 50}><Sparkles size={15} /> Confirmar e analisar</button></>
+        {!runId ? <><button className="ghost-button" onClick={onClose}>Cancelar</button><button className="primary-button" onClick={start} disabled={loading || !snapshot || selectedCount === 0 || selectedCount > 50}><Sparkles size={15} /> Confirmar e analisar</button></>
           : run && !terminal ? <button className="danger-button" onClick={cancel}><Square size={13} /> Cancelar execução</button>
             : <><button className="ghost-button" onClick={onClose}>Fechar</button>{run?.steps?.some((step) => step.status === "failed") && <button className="secondary-button" onClick={retry}><RefreshCw size={14} /> Tentar falhas novamente</button>}</>}
       </footer>

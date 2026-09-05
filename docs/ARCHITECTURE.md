@@ -33,7 +33,7 @@ The process listens on `127.0.0.1:3000`. `src/proxy.ts` validates the `Host` hea
 
 - `RichNoteEditor`: TipTap editor, manual save state, and structured mention suggestions;
 - `KnowledgeMap`: client-only 2D force graph;
-- `AnalysisLauncherDialog`: scope and specialist selection;
+- `AnalysisLauncherDialog`: calendar-constrained multi-note selection and specialist selection;
 - `AnalysisDialog`: snapshot preview, SSE progress, cancellation, retries, findings, and source navigation.
 
 The graph is dynamically imported because its canvas implementation is browser-only.
@@ -95,6 +95,7 @@ sequenceDiagram
     participant API
     participant DB as SQLite
     participant CLI as Codex CLI
+    UI->>UI: Apply dashboard calendar range or choose an item scope
     UI->>API: Request local preview
     API-->>UI: Candidate snapshot
     UI->>UI: User edits selection and confirms
@@ -130,3 +131,10 @@ sequenceDiagram
 - The application is not designed for concurrent users or multiple running instances.
 - The process-level cancellation registry is in memory; restarting the server loses active process handles, while persisted run history remains.
 - There is no application-level encryption at rest.
+
+
+## Efficient AI operations
+
+`analysis/assistance.ts` shares preparation, internal context-size safeguards, source validation and session caching across draft improvement, connections, macro review and deepening. Previews are frozen server-session tickets; macro snapshots are persisted before execution. New runs use a single macro step; old pipeline steps remain for compatibility.
+
+`db/ai-store.ts` persists report occurrences and incremental baselines. Canonical finding IDs preserve lifecycle decisions. Block representations and response caches remain bounded in memory. The editor uses stable extensions and reviews proposed edits against captured document versions.
