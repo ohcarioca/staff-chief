@@ -94,6 +94,10 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, initial
   const selectedCount = snapshot?.notes.length ?? 0;
   const pending = (run?.findings ?? []).filter((finding) => finding.status === "open").sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   const closed = (run?.findings ?? []).filter((finding) => finding.status !== "open");
+  const focusedFinding = initialFindingId ? run?.findings?.find((finding) => finding.id === initialFindingId) ?? null : null;
+  const isFocusedReport = Boolean(initialFindingId && (!run || focusedFinding));
+  const visiblePending = focusedFinding ? focusedFinding.status === "open" ? [focusedFinding] : [] : pending;
+  const visibleClosed = focusedFinding ? focusedFinding.status === "open" ? [] : [focusedFinding] : closed;
   const highCount = pending.filter((finding) => finding.priority === "high").length;
   const canStart = !loading && !busy && Boolean(snapshot?.prepared && !snapshot.prepared.overLimit) && selectedCount > 0 && selectedCount <= 50;
 
@@ -155,10 +159,10 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, initial
   };
 
   return <div className="dialog-backdrop" role="presentation">
-    <section ref={dialogRef} tabIndex={-1} className={`analysis-dialog ${runId ? "analysis-report" : ""}`} role="dialog" aria-modal="true" aria-labelledby="analysis-title">
-      <header className="dialog-header"><div className="dialog-title-mark"><Sparkles size={20} /></div><div><span className="eyebrow">Análise das suas notas</span><h2 id="analysis-title">{runId ? terminal ? "Resultados da análise" : "Acompanhar análise" : "Conferir envio"}</h2></div><button className="icon-button dialog-close" onClick={onClose} aria-label="Fechar"><X size={20} /></button></header>
+    <section ref={dialogRef} tabIndex={-1} className={`analysis-dialog ${runId ? "analysis-report" : ""} ${isFocusedReport ? "focused-finding-report" : ""}`} role="dialog" aria-modal="true" aria-labelledby="analysis-title">
+      <header className="dialog-header"><div className="dialog-title-mark"><Sparkles size={20} /></div><div><span className="eyebrow">Análise das suas notas</span><h2 id="analysis-title">{runId ? isFocusedReport ? "Detalhes da sugestão" : terminal ? "Resultados da análise" : "Acompanhar análise" : "Conferir envio"}</h2></div><button className="icon-button dialog-close" onClick={onClose} aria-label="Fechar"><X size={20} /></button></header>
       <div className={`dialog-body ${runId ? "report-body" : "preview-body"}`}>
-        <AnalysisProgress current={runId ? terminal ? 3 : 2 : 1} />
+        {!isFocusedReport && <AnalysisProgress current={runId ? terminal ? 3 : 2 : 1} />}
         {!runId && <>
           {loading && <div className="loading-row" role="status"><LoaderCircle className="spin" size={20} /> Preparando as fontes para você conferir…</div>}
           {snapshot && <>
@@ -178,17 +182,17 @@ export function AnalysisDialog({ scope, existingRunId, initialFindingId, initial
           {!run && !streamError && <div className="loading-row" role="status"><LoaderCircle className="spin" size={20} /> Abrindo análise…</div>}
           {streamError && <div className="analysis-recovery" role="alert"><strong>O acompanhamento foi interrompido.</strong><p>A execução pode continuar. Reconecte para consultar o estado atual sem iniciar outra análise.</p><button className="secondary-button" onClick={() => { setStreamError(false); setStreamVersion((version) => version + 1); }}>Reconectar acompanhamento</button></div>}
           {run && <>
-            <div className={`run-banner run-${run.status}`} role="status"><div><span className="status-pulse" /><strong>{runStatusLabels[run.status]}</strong></div></div>
-            <div className="report-summary"><h3>{pending.length} sugestão{pending.length === 1 ? " pendente" : "s pendentes"}</h3><p>{highCount ? `${highCount} de prioridade alta. Comece pelos próximos passos abaixo.` : pending.length ? "Confira os próximos passos e decida o que fazer." : closed.length ? "Todas as sugestões deste relatório já foram avaliadas." : ""}</p></div>
+            {!isFocusedReport && <div className={`run-banner run-${run.status}`} role="status"><div><span className="status-pulse" /><strong>{runStatusLabels[run.status]}</strong></div></div>}
+            {!isFocusedReport && <div className="report-summary"><h3>{pending.length} sugestão{pending.length === 1 ? " pendente" : "s pendentes"}</h3><p>{highCount ? `${highCount} de prioridade alta. Comece pelos próximos passos abaixo.` : pending.length ? "Confira os próximos passos e decida o que fazer." : closed.length ? "Todas as sugestões deste relatório já foram avaliadas." : ""}</p></div>}
             {!terminal && <p>{run.status === "queued" ? "Aguardando o início da leitura das fontes." : "A IA está cruzando as fontes para preparar sugestões com evidências."} Você pode fechar esta janela e voltar pelas análises recentes.</p>}
             {run.status === "partial" && <p className="analysis-recovery">Algumas etapas falharam. Os resultados disponíveis estão abaixo; a revisão ficou incompleta.</p>}
             {run.status === "failed" && <p className="analysis-recovery">Não foi possível concluir a análise. Isso não significa que não há problemas nas notas.</p>}
             {run.status === "cancelled" && <p className="analysis-recovery">A análise foi interrompida a seu pedido. Os resultados disponíveis foram preservados.</p>}
-            <div className="finding-list" aria-label="Sugestões pendentes">{pending.map(renderFinding)}</div>
-            {!!closed.length && <section className="closed-findings"><h3>Resolvidas e descartadas ({closed.length})</h3><div className="finding-list">{closed.map(renderFinding)}</div></section>}
-            {run.status === "completed" && !run.findings?.length && <div className="empty-report"><Sparkles size={28} /><h3>Nenhuma sugestão sustentada pelas fontes</h3><p>A análise terminou sem sugestões para o contexto enviado. Isso não garante que todas as situações estejam resolvidas.</p></div>}
-            {!!run.steps?.length && <details className="execution-details"><summary>Detalhes da execução</summary><div className="step-list">{run.steps.map((step) => <div className={`step-row step-${step.status}`} key={step.id}>{step.status === "running" ? <LoaderCircle className="spin" size={18} /> : step.status === "completed" ? <Check size={18} /> : step.status === "failed" ? <AlertTriangle size={18} /> : <Circle size={16} />}<span>{stepLabels[step.name] ?? step.name}</span><small>{stepStatusLabels[step.status] ?? step.status}</small>{step.error && <p>{step.error}</p>}</div>)}</div></details>}
-            {run.error && <details className="execution-details"><summary>Detalhes do problema</summary><p>{run.error}</p></details>}
+            <div className="finding-list" aria-label={isFocusedReport ? "Sugestão selecionada" : "Sugestões pendentes"}>{visiblePending.map(renderFinding)}</div>
+            {!!visibleClosed.length && <section className="closed-findings"><h3>Resolvidas e descartadas ({visibleClosed.length})</h3><div className="finding-list">{visibleClosed.map(renderFinding)}</div></section>}
+            {!isFocusedReport && run.status === "completed" && !run.findings?.length && <div className="empty-report"><Sparkles size={28} /><h3>Nenhuma sugestão sustentada pelas fontes</h3><p>A análise terminou sem sugestões para o contexto enviado. Isso não garante que todas as situações estejam resolvidas.</p></div>}
+            {!isFocusedReport && !!run.steps?.length && <details className="execution-details"><summary>Detalhes da execução</summary><div className="step-list">{run.steps.map((step) => <div className={`step-row step-${step.status}`} key={step.id}>{step.status === "running" ? <LoaderCircle className="spin" size={18} /> : step.status === "completed" ? <Check size={18} /> : step.status === "failed" ? <AlertTriangle size={18} /> : <Circle size={16} />}<span>{stepLabels[step.name] ?? step.name}</span><small>{stepStatusLabels[step.status] ?? step.status}</small>{step.error && <p>{step.error}</p>}</div>)}</div></details>}
+            {!isFocusedReport && run.error && <details className="execution-details"><summary>Detalhes do problema</summary><p>{run.error}</p></details>}
           </>}
         </>}
         {message && <p className="analysis-feedback" role="status">{message}</p>}

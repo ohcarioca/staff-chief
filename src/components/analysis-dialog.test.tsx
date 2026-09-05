@@ -54,7 +54,7 @@ describe("analysis preview", () => {
     expect(abortSpy).not.toHaveBeenCalled();
   });
 
-  it("expands only the selected finding", () => {
+  it("shows only the selected finding when opened directly", () => {
     let publishRun: (run: AnalysisRunRecord) => void = () => undefined;
     class EventSourceMock {
       onmessage: ((event: MessageEvent) => void) | null = null;
@@ -123,21 +123,14 @@ describe("analysis preview", () => {
       findings,
     }));
 
-    const firstToggle = screen.getByRole("button", { name: /Primeiro achado/ });
+    expect(screen.queryByRole("button", { name: /Primeiro achado/ })).toBeNull();
     const secondToggle = screen.getByRole("button", { name: /Segundo achado/ });
-    expect(firstToggle.getAttribute("aria-expanded")).toBe("false");
     expect(secondToggle.getAttribute("aria-expanded")).toBe("true");
     expect(screen.queryByText("Detalhes exclusivos do primeiro achado.")).toBeNull();
     expect(screen.getByText("Detalhes exclusivos do segundo achado.")).not.toBeNull();
 
-    fireEvent.click(firstToggle);
-    expect(firstToggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(secondToggle);
     expect(secondToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.getByText("Detalhes exclusivos do primeiro achado.")).not.toBeNull();
     expect(screen.queryByText("Detalhes exclusivos do segundo achado.")).toBeNull();
-
-    fireEvent.click(firstToggle);
-    expect(firstToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Detalhes exclusivos do primeiro achado.")).toBeNull();
   });
 });
